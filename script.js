@@ -34,6 +34,13 @@ const VIEW_MAX_SIDE  = 1920;
 const THUMB_MAX_SIDE = 400;
 const WEBP_QUALITY = 0.85;
 
+// 1日あたりのアップロード上限。想定同時利用者数(仮に1日30人程度)×この上限で
+// 増える保存容量が費用的に問題ない範囲になるよう仮置きした値
+// (2026-09時点、実際の利用者数を見ながら調整すること)。
+// 元の画像のまま保存(UPoint交換の特典)は容量が大きいので別枠でさらに絞る。
+const DAILY_UPLOAD_LIMIT = 30;
+const DAILY_ORIGINAL_UPLOAD_LIMIT = 5;
+
 let currentUid = null;
 let unsubscribeGallery = null;
 let unsubscribeSitePerks = null;
@@ -172,26 +179,62 @@ favoriteFilterBtn.addEventListener('click', () => {
 // ===== アップロード =====
 uploadBtn.addEventListener('click', () => uploadInput.click());
 
+function startOfTodayMs() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// allImages(ギャラリー購読で既に持っている自分の全件)から、ローカル日付の
+// 今日作成された件数を数える。書き込み直後でcreatedAtがserverTimestamp未解決
+// (ローカルではnull)な場合は「今作った=今日」として扱う。
+function countUploadedToday(onlyOriginal) {
+  const todayStart = startOfTodayMs();
+  return allImages.filter((img) => {
+    if (onlyOriginal && !img.isOriginal) return false;
+    const ms = img.createdAt?.toMillis ? img.createdAt.toMillis() : Date.now();
+    return ms >= todayStart;
+  }).length;
+}
+
 uploadInput.addEventListener('change', async (e) => {
   const files = [...e.target.files];
   uploadInput.value = '';
   if (!files.length || !currentUid) return;
 
-  const useOriginal = originalUploadUnlocked && originalUploadCheckbox.checked;
+  const wantsOriginal = originalUploadUnlocked && originalUploadCheckbox.checked;
+  let uploadedToday = countUploadedToday(false);
+  let originalUploadedToday = countUploadedToday(true);
+  let fellBackToCompressed = false;
 
   uploadBtn.disabled = true;
   for (let i = 0; i < files.length; i++) {
+    if (uploadedToday >= DAILY_UPLOAD_LIMIT) {
+      uploadStatus.textContent = `1日のアップロード上限(${DAILY_UPLOAD_LIMIT}枚)に達したため、残りは保存できませんでした。`;
+      break;
+    }
+    // 元画像保存の1日上限に達している場合は、アップロード自体は続行しつつ
+    // その分だけ通常の圧縮保存にフォールバックする(せっかく選んだ画像を
+    // 無駄にしないため、エラーにはしない)。
+    const useOriginalForThis = wantsOriginal && originalUploadedToday < DAILY_ORIGINAL_UPLOAD_LIMIT;
+    if (wantsOriginal && !useOriginalForThis) fellBackToCompressed = true;
+
     uploadStatus.textContent = `アップロード中... (${i + 1}/${files.length})`;
     try {
-      await uploadOneFile(files[i], currentUid, useOriginal);
+      await uploadOneFile(files[i], currentUid, useOriginalForThis);
+      uploadedToday++;
+      if (useOriginalForThis) originalUploadedToday++;
     } catch (err) {
       console.error('[storage] upload failed', err);
       uploadStatus.textContent = `「${files[i].name}」のアップロードに失敗しました。`;
-      break;
+      uploadBtn.disabled = false;
+      return;
     }
   }
   if (uploadStatus.textContent.startsWith('アップロード中')) {
-    uploadStatus.textContent = 'アップロードが完了しました。';
+    uploadStatus.textContent = fellBackToCompressed
+      ? `アップロードが完了しました(元画像保存は1日${DAILY_ORIGINAL_UPLOAD_LIMIT}枚までのため、一部は圧縮版で保存しました)。`
+      : 'アップロードが完了しました。';
   }
   uploadBtn.disabled = false;
 });
