@@ -1,16 +1,14 @@
 // script.js
-// スクショ保管庫。ログイン必須(24_AccountCenterでの登録・ログインが前提)。
+// 画像保管庫。ログイン必須(24_AccountCenterでの登録・ログインが前提)。
 // アップロード時にクライアント側でリサイズ/圧縮してから保存し、原寸は保持しない。
 //
-// 注意: Firestore(screenshotStorageImages)・Storage(screenshotStorage/)への
-// 読み書きは、Bakatare01リポジトリ側のセキュリティルールにこのパスの許可を
-// 追加しないと permission-denied になる(このルールはデフォルトで
-// 未知のパスを全拒否している)。CLAUDE.mdに追加すべきルール案を記載している。
+// Firestore(screenshotStorageImages)・Storage(screenshotStorage/)のルールは
+// 24_AccountCenterリポジトリのfirestore.rules/storage.rulesにある(実装・デプロイ済み)。
 
 import { auth, db, storage } from './firebaseConfig.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
-  collection, doc, setDoc, updateDoc, query, where, orderBy, onSnapshot, serverTimestamp,
+  collection, doc, getDoc, setDoc, updateDoc, query, where, orderBy, onSnapshot, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
 
@@ -20,6 +18,9 @@ const storageApp  = document.getElementById('storage-app');
 const uploadInput  = document.getElementById('upload-input');
 const uploadBtn    = document.getElementById('upload-btn');
 const uploadStatus = document.getElementById('upload-status');
+
+const originalUploadRow = document.getElementById('original-upload-row');
+const originalUploadCheckbox = document.getElementById('original-upload-checkbox');
 
 const tagFilterInput   = document.getElementById('tag-filter-input');
 const favoriteFilterBtn = document.getElementById('favorite-filter-btn');
@@ -35,26 +36,55 @@ const WEBP_QUALITY = 0.85;
 
 let currentUid = null;
 let unsubscribeGallery = null;
+let unsubscribeSitePerks = null;
 let allImages = [];       // 自分がownerの画像を全件(Firestoreの現在の値)
 let favoriteOnly = false;
 let tagFilterText = '';
 
 // ===== ログイン状態でメイン画面の出し分け =====
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
   if (unsubscribeGallery) { unsubscribeGallery(); unsubscribeGallery = null; }
+  if (unsubscribeSitePerks) { unsubscribeSitePerks(); unsubscribeSitePerks = null; }
 
   if (user) {
     currentUid = user.uid;
     loginGate.classList.add('hidden');
     storageApp.classList.remove('hidden');
     startGalleryListener(currentUid);
+
+    // 「元の画像のまま保存」はUPointでの交換で解放される機能。sitePerksは
+    // Firebase Authのuidではなく共有匿名ID(omikujiUserId)側にぶら下がっているので、
+    // accountLinksで一度引いてからomikujiUsersを見に行く(userAvatars等と同じ経路)。
+    const omikujiUserId = await resolveOmikujiUserId(currentUid);
+    if (omikujiUserId) unsubscribeSitePerks = startSitePerksListener(omikujiUserId);
   } else {
     currentUid = null;
     allImages = [];
+    originalUploadUnlocked = false;
+    originalUploadRow.classList.add('hidden');
     loginGate.classList.remove('hidden');
     storageApp.classList.add('hidden');
   }
 });
+
+async function resolveOmikujiUserId(uid) {
+  try {
+    const snap = await getDoc(doc(db, 'accountLinks', uid));
+    return snap.data()?.omikujiUserId || null;
+  } catch (e) {
+    console.error('[storage] accountLinks lookup failed', e);
+    return null;
+  }
+}
+
+let originalUploadUnlocked = false;
+function startSitePerksListener(omikujiUserId) {
+  return onSnapshot(doc(db, 'omikujiUsers', omikujiUserId), (snap) => {
+    originalUploadUnlocked = !!snap.data()?.sitePerks?.storage17?.originalUpload;
+    originalUploadRow.classList.toggle('hidden', !originalUploadUnlocked);
+    if (!originalUploadUnlocked) originalUploadCheckbox.checked = false;
+  }, (e) => console.error('[storage] site perks listen failed', e));
+}
 
 // ===== ギャラリー購読 =====
 function startGalleryListener(uid) {
@@ -147,11 +177,13 @@ uploadInput.addEventListener('change', async (e) => {
   uploadInput.value = '';
   if (!files.length || !currentUid) return;
 
+  const useOriginal = originalUploadUnlocked && originalUploadCheckbox.checked;
+
   uploadBtn.disabled = true;
   for (let i = 0; i < files.length; i++) {
     uploadStatus.textContent = `アップロード中... (${i + 1}/${files.length})`;
     try {
-      await uploadOneFile(files[i], currentUid);
+      await uploadOneFile(files[i], currentUid, useOriginal);
     } catch (err) {
       console.error('[storage] upload failed', err);
       uploadStatus.textContent = `「${files[i].name}」のアップロードに失敗しました。`;
@@ -164,17 +196,37 @@ uploadInput.addEventListener('change', async (e) => {
   uploadBtn.disabled = false;
 });
 
-async function uploadOneFile(file, uid) {
+const ORIGINAL_EXT_BY_TYPE = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/bmp': 'bmp',
+};
+
+async function uploadOneFile(file, uid, useOriginal) {
   const nativeImg = await loadImageFromFile(file);
-  const viewBlob  = await resizeToWebp(nativeImg, VIEW_MAX_SIDE, WEBP_QUALITY);
   const thumbBlob = await resizeToWebp(nativeImg, THUMB_MAX_SIDE, WEBP_QUALITY);
 
   const imageId = doc(collection(db, IMAGES_COLLECTION)).id;
-  const viewRef  = ref(storage, `${STORAGE_ROOT}/${uid}/${imageId}/view.webp`);
   const thumbRef = ref(storage, `${STORAGE_ROOT}/${uid}/${imageId}/thumb.webp`);
-
-  await uploadBytes(viewRef, viewBlob, { contentType: 'image/webp' });
   await uploadBytes(thumbRef, thumbBlob, { contentType: 'image/webp' });
+
+  // 「元の画像のまま保存」がON(UPointで解放済み)なら、リサイズ/圧縮せず
+  // 選んだファイルをそのままアップロードする。対応していない形式の場合は
+  // 従来通りWebPへ変換する(ORIGINAL_EXT_BY_TYPEに無ければフォールバック)。
+  const ext = ORIGINAL_EXT_BY_TYPE[file.type];
+  const isOriginal = !!(useOriginal && ext);
+
+  let viewRef;
+  if (isOriginal) {
+    viewRef = ref(storage, `${STORAGE_ROOT}/${uid}/${imageId}/original.${ext}`);
+    await uploadBytes(viewRef, file, { contentType: file.type });
+  } else {
+    const viewBlob = await resizeToWebp(nativeImg, VIEW_MAX_SIDE, WEBP_QUALITY);
+    viewRef = ref(storage, `${STORAGE_ROOT}/${uid}/${imageId}/view.webp`);
+    await uploadBytes(viewRef, viewBlob, { contentType: 'image/webp' });
+  }
 
   const [viewUrl, thumbUrl] = await Promise.all([
     getDownloadURL(viewRef),
@@ -193,6 +245,7 @@ async function uploadOneFile(file, uid) {
     viewUrl,
     thumbUrl,
     shareEnabled: false,
+    isOriginal,
   });
 }
 

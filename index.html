@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>スクショ保管庫</title>
+    <title>画像保管庫</title>
 
     <link rel="stylesheet" href="styles.css?v=1.0" />
 
@@ -32,7 +32,7 @@
             </div>
         </div>
 
-        <h1 id="site-title" data-i18n="homeTitle">スクショ保管庫</h1>
+        <h1 id="site-title" data-i18n="homeTitle">画像保管庫</h1>
         <p data-i18n="homeSub">原神・スタレのスクショを、日常の写真と混ざらずに置いておける場所</p>
         <a href="https://uko05.github.io/24_AccountCenter/" class="account-link" data-i18n="accountLink">アカウント管理</a>
     </header>
@@ -53,6 +53,10 @@
                 <h2 data-i18n="uploadTitle">画像をアップロード</h2>
                 <input type="file" id="upload-input" accept="image/*" multiple hidden>
                 <button type="button" id="upload-btn" class="primary-btn" data-i18n="uploadBtn">画像を選ぶ</button>
+                <label class="storage-original-row hidden" id="original-upload-row">
+                    <input type="checkbox" id="original-upload-checkbox">
+                    <span data-i18n="originalUploadLabel">元の画像のまま保存する(圧縮しない)</span>
+                </label>
                 <p class="hint" id="upload-status"></p>
             </section>
 

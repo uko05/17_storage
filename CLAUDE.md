@@ -1,4 +1,4 @@
-# スクショ保管庫 — 開発メモ
+# 画像保管庫 — 開発メモ
 
 原神・スタレのスクショを、カメラロールの日常写真と混ざらずに後から見返せる
 アップロード先サイト。登録済みアカウント(24_AccountCenter)でログインした人だけ
@@ -24,35 +24,24 @@
   生成してからStorageのパスにも使い回している(先にIDを確定させてから
   Storageアップロード→Firestore書き込みの順で行うため)。
 
+## Firestore/Storageのセキュリティルール(実装・デプロイ済み 2026-09-08)
+ルールの実体は**このリポジトリには無く**、`E:\20_GitHub\24_AccountCenter\firestore.rules`
+と`...\storage.rules`にある(プロジェクト全体で共有しているファイル。ユーザーは
+Firebaseプロジェクト名`genshin-bakatare01`から「Bakatare01」と呼ぶことがあるが、
+実際のリポジトリ名は24_AccountCenter。詳細は[[reference_firestore_rules_location]]メモ参照)。
+`screenshotStorageImages`/`screenshotStorage/`のルールは追加済み・
+`firebase deploy --only firestore:rules` / `--only storage`で反映済み
+(このFirebase CLIバージョンでは`firestore:rules,storage:rules`のように
+まとめて1回で指定するとエラーになるため、2回に分けて実行する必要がある)。
+
+内容: ログイン必須(`request.auth.uid`をそのままownerUid/Storageパスに使う、
+accountLinks経由の共有匿名IDにはしていない)。`moderationStatus`はクライアント
+から変更不可(Cloud Functions/Admin SDK専用)。`shareEnabled`は
+`moderationStatus == 'approved'`の時だけtrueにできる。
+
 ## ⚠️ 未実装・ブロッカー(次にやること)
 
-### 1. Firestore/Storageのセキュリティルールが無い
-このプロジェクト(`genshin-bakatare01`)のルールはBakatare01リポジトリ側で
-管理されており(FriendBoardの[[project_point_redemption_site]]メモ参照)、
-末尾が `match /{document=**} { allow read, write: if false; }` という
-全拒否のcatch-allになっている。`screenshotStorageImages`コレクションと
-`screenshotStorage/`パスの許可ルールを**Bakatare01リポジトリに追加しないと、
-このサイトの読み書きは全てpermission-deniedで失敗する**。
-
-追加すべきルール案(Firestore側、ログイン必須なので`request.auth != null`必須、
-自分のuidのドキュメントだけ読み書き可能にする):
-```
-match /screenshotStorageImages/{imageId} {
-  allow read: if request.auth != null
-    && (resource.data.ownerUid == request.auth.uid || resource.data.shareEnabled == true);
-  allow create: if request.auth != null
-    && request.resource.data.ownerUid == request.auth.uid
-    && request.resource.data.moderationStatus == 'pending';
-  allow update: if request.auth != null && resource.data.ownerUid == request.auth.uid
-    && request.resource.data.ownerUid == resource.data.ownerUid;
-  allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
-}
-```
-Storage側は`storage.rules`(Bakatare01側、Firestoreルールとは別ファイルの想定)に
-`match /screenshotStorage/{uid}/{allPaths=**} { allow read: if true;
-allow write: if request.auth != null && request.auth.uid == uid; }`のようなルールが必要。
-
-### 2. Cloud Functions(SafeSearchモデレーション)が未実装
+### 1. Cloud Functions(SafeSearchモデレーション)が未実装
 このサイト群で初めてCloud Functionsを使うことになる機能。設計方針(2026-09確定):
 - Storageの`onFinalize`トリガーでCloud Vision APIのSafeSearch Detectionを実行
 - `VERY_LIKELY` → 該当ファイルを**即自動削除**し、Firestoreドキュメントの
@@ -69,9 +58,12 @@ allow write: if request.auth != null && request.auth.uid == uid; }`のような�
   自動スキャンに対して完全に無リスクにはならない、という点はユーザーとの
   会話で認識合わせ済み(だからこそ即自動削除としきい値管理・7日自動削除が重要)。
 
-### 3. gitリポジトリ未作成
-`E:\20_GitHub\17_storage`はまだ`git init`していない。GitHub Pagesで公開する
-ならリポジトリ作成が必要(94_gazouと違い、これは公開サイトなので早めに必要)。
+### 2. 元画像のまま保存する機能(UP交換で解放、実装中)
+デフォルトはこれまで通りリサイズ/WebP圧縮。ユーザーが08_UPointでUPを消費して
+解放すると、チェックボックスで「元の画像のまま保存」を選べるようにする
+(`sitePerks.storage17.originalUpload`的なflag、[[project_point_redemption_site]]と
+同じパターン)。08_UPoint側に実際の交換メニューを追加する作業は別途必要
+(このリポジトリ単体では解放フラグを読むだけ)。
 
 ## その他
 - ヘッダー/フッター/ハンバーガーメニュー/フォント(`mihoyo-zenzero`)/モバイル
