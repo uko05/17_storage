@@ -16,13 +16,23 @@
   (`script.js`の`resizeToWebp()`。94_gazouのcanvasリサイズと同じ考え方)
 
 ## データモデル(実装済み・script.js)
-- Storage: `screenshotStorage/{uid}/{imageId}/view.webp` と `.../thumb.webp`
+- Storage: `screenshotStorage/{uid}/{imageId}/view.webp`(または`original.{ext}`)
+  と `.../thumb.webp`
 - Firestore: `screenshotStorageImages/{imageId}` = `{ ownerUid, createdAt,
   tags:[], favorite:bool, moderationStatus:'pending'|'approved'|'flagged'|'removed',
-  viewUrl, thumbUrl, shareEnabled:bool }`
+  viewUrl, thumbUrl, shareEnabled:bool, isOriginal:bool }`
 - `imageId`は`doc(collection(db,'screenshotStorageImages')).id`でクライアント側
-  生成してからStorageのパスにも使い回している(先にIDを確定させてから
-  Storageアップロード→Firestore書き込みの順で行うため)。
+  生成してからStorageのパスにも使い回している。
+- **書き込み順序が重要**: Firestoreドキュメントを**先に**作り、そのあとで
+  Storageへアップロードする(逆ではない)。理由: Cloud Functions
+  (`moderateStorageUpload`)がStorage書き込み完了と同時に発火し、
+  Firestoreドキュメントへ`{merge:true}`で結果を書き込みに行く。もし
+  ドキュメントがまだ無い状態でこれが先に走ると、直後にクライアントが行う
+  `setDoc`(mergeなし)がその結果を丸ごと上書きしてしまう。`viewUrl`/`thumbUrl`
+  も`getDownloadURL()`を待たず、Storageの読み取りルールが`if true`(公開)
+  であることを前提に`https://firebasestorage.googleapis.com/v0/b/{bucket}/o/
+  {encodedPath}?alt=media`形式で決定的に組み立てている(アップロード前でも
+  確定できるので、この順序変更と相性がよい)。
 
 ## Firestore/Storageのセキュリティルール(実装・デプロイ済み 2026-09-08)
 ルールの実体は**このリポジトリには無く**、`E:\20_GitHub\24_AccountCenter\firestore.rules`
@@ -39,31 +49,64 @@ accountLinks経由の共有匿名IDにはしていない)。`moderationStatus`�
 から変更不可(Cloud Functions/Admin SDK専用)。`shareEnabled`は
 `moderationStatus == 'approved'`の時だけtrueにできる。
 
-## ⚠️ 未実装・ブロッカー(次にやること)
+## Cloud Functions(SafeSearchモデレーション、実装・デプロイ済み 2026-09-08)
+このサイト群で初めて使うCloud Functions。実体は`24_AccountCenter/functions/`
+にある(Firestore/Storageルールと同じく共有インフラリポジトリ側)。
+`firebase.json`に`"functions": {"source": "functions"}`を追加済み。
+リージョンは**asia-northeast1**(StorageバケットもFirestoreのデータベースも
+asia-northeast1にあるため。Storageトリガーはバケットと別リージョンの
+関数からは張れず一度`us-central1`でデプロイ失敗した)。Node.js 22
+(2026-09時点、Node 20は非推奨のため)。
 
-### 1. Cloud Functions(SafeSearchモデレーション)が未実装
-このサイト群で初めてCloud Functionsを使うことになる機能。設計方針(2026-09確定):
-- Storageの`onFinalize`トリガーでCloud Vision APIのSafeSearch Detectionを実行
-- `VERY_LIKELY` → 該当ファイルを**即自動削除**し、Firestoreドキュメントの
-  `moderationStatus`を`'removed'`にする(または削除する)
-- `LIKELY`/`POSSIBLE` → `moderationStatus`を`'flagged'`にする。この間は
-  `shareEnabled`を強制的にfalseのままにして共有リンクを発行させない
-  (=保留中は絶対に人に見せない)。加えて**7日間確認されなければ自動削除**する
-  フェイルセーフを入れる(タイマー付きCloud Function or 別途スケジュール実行)。
-- `UNLIKELY`/`VERY_UNLIKELY` → `moderationStatus`を`'approved'`にする
-- 管理者(自分)用の確認画面で`moderationStatus == 'flagged'`のものを一覧表示し、
-  「公開する/削除する」を選べるようにする(FriendBoardの通報確認タブと同じ
-  パターンを流用予定、未実装)
-- 前提として、保留中でもファイル自体はStorageに存在する以上、Google側の
-  自動スキャンに対して完全に無リスクにはならない、という点はユーザーとの
-  会話で認識合わせ済み(だからこそ即自動削除としきい値管理・7日自動削除が重要)。
+3つの関数:
+- `moderateStorageUpload`(Storageの`onFinalize`トリガー、パスが
+  `screenshotStorage/{uid}/{imageId}/(view.webp|original.*)`の時だけ処理。
+  `thumb.webp`は同じ画像の縮小版で判定結果が変わらないためスキップ)。
+  Cloud Vision APIのSafeSearch Detectionを実行し、`VERY_LIKELY`→
+  `moderationStatus:'removed'`、`LIKELY`/`POSSIBLE`→`'flagged'`(+
+  `flaggedAt`)、`UNLIKELY`/`VERY_UNLIKELY`→`'approved'`にFirestoreを
+  更新する。SafeSearch自体がエラーで失敗した場合も安全側に倒して
+  `'flagged'`(`flaggedReason:'safesearch_error'`)にする(無条件approvedには
+  しない)。
+- `sweepFlaggedImages`(`onSchedule('every 24 hours')`)。`flagged`のまま
+  `flaggedAt`から7日経過した画像を`'removed'`にする(見忘れ放置の
+  フェイルセーフ)。
+- `cleanupRemovedImage`(`screenshotStorageImages/{imageId}`の
+  `onDocumentUpdated`トリガー)。`moderationStatus`が`'removed'`に**変わった
+  瞬間**に実際のStorageファイルを削除する処理をここに一本化している
+  (SafeSearchの自動判定・7日一括削除・管理者の手動却下、どの経路で
+  `'removed'`になっても同じ処理で片付く。呼び出し側は理由を問わず
+  Firestoreを更新するだけでよい設計)。
 
-### 2. 元画像のまま保存する機能(実装・08_UPoint連携済み 2026-09-08)
+管理者用の確認画面(`index.html`の`#admin-section`、`script.js`の
+`ADMIN_UID`)を実装済み。FriendBoard(`board.js`)と同一のADMIN_UIDを
+そのまま流用(将来的にロールベースへ移行する構想はFriendBoard側のメモ参照)。
+`moderationStatus=='flagged'`の画像を一覧表示し「公開する/削除する」を選べる。
+Firestoreルール側でも管理者(`isAdmin()`)には`moderationStatus`/`shareEnabled`
+/`moderatedAt`のみの更新を許可済み。
+
+前提として、保留中でもファイル自体はStorageに存在する以上、Google側の
+自動スキャンに対して完全に無リスクにはならない、という点はユーザーとの
+会話で認識合わせ済み(だからこそ即自動削除としきい値管理・7日自動削除が重要)。
+
+## 元画像のまま保存する機能(実装・08_UPoint連携済み 2026-09-08)
 デフォルトはこれまで通りリサイズ/WebP圧縮。08_UPointで100UPと交換すると
 `omikujiUsers/{omikujiUserId}.sitePerks.storage17.originalUpload`がtrueになり、
 アップロード画面にチェックボックスが出て「元の画像のまま保存」を選べるように
 なる(一度交換すれば永続、`perkType:'flag'`)。08_UPoint側のカタログ追加も完了
 (`08_UPoint/script.js`のSITE_GROUPS)。
+
+## ⚠️ 未実装・ブロッカー(次にやること)
+
+### 1. 00_TopPageのハンバーガーメニューにまだ載っていない
+`00_TopPage/shared/sidebar.js`の`MENU`配列に17_storageのリンクを追加する
+作業がまだ。これをしないと他サイトのハンバーガーメニューから辿り着けない。
+
+### 2. 予算アラート(参考: 費用面のセーフティネット)
+`genshin-bakatare01`のGCP請求先アカウントに、月10円/月500円の2段階で
+メール通知が飛ぶ予算アラートを設定済み(2026-09-08、gcloud CLIで作成)。
+17_storage固有の設定ではなくプロジェクト全体に対するものだが、想定外の
+利用急増があった場合の早期検知として機能する想定。
 
 ## アップロード上限(2026-09-08決定、あくまで仮置き)
 費用を青天井にしないためのクライアント側カウント(Firestoreルールでの強制では
