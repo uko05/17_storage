@@ -1,0 +1,278 @@
+/* =========================
+   17_storage (00_TopPageのデザインを踏襲)
+   ========================= */
+
+* { box-sizing: border-box; }
+
+@font-face {
+  font-family: 'mihoyo-zenzero';
+  src: url('font/mihoyo-zenzero.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+body.portal-page {
+  margin: 0;
+  background: #f4f4f4;
+  font-family: 'mihoyo-zenzero', sans-serif;
+  overflow-x: hidden;
+}
+
+.hidden { display: none !important; }
+
+.site-version {
+  position: fixed;
+  right: 8px;
+  bottom: 6px;
+  font-size: 11px;
+  color: rgba(0,0,0,0.2);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ヘッダー */
+.portal-header {
+  position: relative;
+  text-align: center;
+  padding: 56px 16px 34px;
+}
+
+.portal-header h1 {
+  font-size: 42px;
+  margin: 0;
+  color: #222;
+}
+
+.portal-header p {
+  margin: 10px 0 0;
+  font-size: 16px;
+  color: #666;
+}
+
+.account-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 13px;
+  color: #888;
+  text-decoration: underline;
+}
+
+.header-topbar {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 32px);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.lang-switch {
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.85);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 12px;
+  backdrop-filter: blur(6px);
+}
+
+.lang-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lang-option input { cursor: pointer; }
+
+/* 全体コンテナ */
+.portal-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 10px 16px 30px;
+}
+
+.portal-section {
+  margin: 0 auto 18px;
+  padding: 18px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.65);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.06);
+}
+
+.portal-section h2 {
+  margin: 0 0 12px;
+  text-align: center;
+  font-size: 22px;
+  color: #222;
+}
+
+.hint {
+  font-size: 0.82rem;
+  color: #888;
+  margin-top: 8px;
+  text-align: center;
+}
+
+/* ボタン */
+.primary-btn {
+  display: inline-block;
+  background: #ffcc00;
+  border: none;
+  border-radius: 50px;
+  color: #222;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: bold;
+  padding: 12px 24px;
+  text-decoration: none;
+}
+.primary-btn:hover { opacity: 0.85; }
+
+.secondary-btn {
+  display: inline-block;
+  background: #eeeeee;
+  border: 1px solid #dddddd;
+  border-radius: 20px;
+  color: #333;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 9px 16px;
+  white-space: nowrap;
+}
+.secondary-btn:hover { background: #ddd; }
+.secondary-btn.active { background: #ffcc00; border-color: #ffcc00; }
+
+/* ===== ログイン必須の案内 ===== */
+.storage-login-gate {
+  text-align: center;
+  padding: 40px 20px;
+}
+.storage-login-gate h2 { margin-bottom: 10px; }
+.storage-login-gate p { color: #666; margin-bottom: 18px; }
+
+/* ===== アップロード ===== */
+.storage-upload-section { text-align: center; }
+
+/* ===== 絞り込み ===== */
+.storage-filter-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+}
+.storage-tag-input {
+  flex: 1;
+  min-width: 160px;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  font-family: inherit;
+}
+
+/* ===== ギャラリー ===== */
+.storage-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.storage-card {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #ddd;
+  cursor: pointer;
+}
+.storage-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.storage-card-fav {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 18px;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  color: #ffcc00;
+}
+.storage-card-pending {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.45);
+  color: #fff;
+  font-size: 0.75rem;
+  text-align: center;
+  padding: 6px;
+}
+
+.storage-empty-hint { padding: 20px 0; }
+
+/* フッター */
+.portal-footer {
+  text-align: center;
+  padding: 26px 16px 40px;
+  color: #777;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.twitter-icon {
+  width: 30px;
+  height: 30px;
+  display: block;
+}
+
+/* =========================
+   スマホ（<=768）
+   ========================= */
+@media (max-width: 768px) {
+
+  .portal-header { padding: 44px 14px 20px; }
+  .portal-header h1 { font-size: 28px; }
+  .portal-header p { font-size: 13px; }
+
+  .lang-switch {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 10px;
+    max-width: calc(100% - 20px);
+  }
+
+  .portal-container { padding-left: 10px; padding-right: 10px; }
+
+  .portal-section { padding: 14px 10px; border-radius: 10px; }
+
+  .lang-option { font-size: 13px; }
+
+  .storage-gallery-grid {
+    grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+    gap: 6px;
+  }
+
+  .storage-filter-row { flex-direction: column; align-items: stretch; }
+}

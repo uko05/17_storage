@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>スクショ保管庫</title>
+
+    <link rel="stylesheet" href="styles.css?v=1.0" />
+
+    <!-- Favicon -->
+    <link rel="icon" href="public/scripts/favicon_io/favicon.ico" type="image/x-icon">
+    <link rel="icon" sizes="16x16" href="public/scripts/favicon_io/favicon-16x16.png">
+    <link rel="icon" sizes="32x32" href="public/scripts/favicon_io/favicon-32x32.png">
+    <link rel="apple-touch-icon" href="public/scripts/favicon_io/apple-touch-icon.png">
+    <link rel="icon" sizes="192x192" href="public/scripts/favicon_io/android-chrome-192x192.png">
+    <link rel="icon" sizes="512x512" href="public/scripts/favicon_io/android-chrome-512x512.png">
+</head>
+
+<body class="portal-page storage-page">
+
+    <header class="portal-header">
+        <div class="header-topbar">
+            <div class="lang-switch" aria-label="Language switch">
+                <label class="lang-option">
+                    <input type="radio" name="lang" value="ja" checked />
+                    <span data-i18n="langJa">JP</span>
+                </label>
+                <label class="lang-option">
+                    <input type="radio" name="lang" value="en" />
+                    <span data-i18n="langEn">EN</span>
+                </label>
+            </div>
+        </div>
+
+        <h1 id="site-title" data-i18n="homeTitle">スクショ保管庫</h1>
+        <p data-i18n="homeSub">原神・スタレのスクショを、日常の写真と混ざらずに置いておける場所</p>
+        <a href="https://uko05.github.io/24_AccountCenter/" class="account-link" data-i18n="accountLink">アカウント管理</a>
+    </header>
+
+    <main class="portal-container storage-container">
+
+        <!-- 未ログイン時の案内(要ログインのサイトのため、ログインするまでこれ以外は隠す) -->
+        <section class="portal-section storage-login-gate" id="login-gate">
+            <h2 data-i18n="loginGateTitle">ログインが必要です</h2>
+            <p data-i18n="loginGateDesc">このサイトはアカウント登録・ログインしている人だけが利用できます。</p>
+            <a href="https://uko05.github.io/24_AccountCenter/" class="primary-btn" data-i18n="loginGateBtn">アカウント管理へ</a>
+        </section>
+
+        <!-- ログイン後のメインコンテンツ -->
+        <div class="storage-app hidden" id="storage-app">
+
+            <section class="portal-section storage-upload-section">
+                <h2 data-i18n="uploadTitle">画像をアップロード</h2>
+                <input type="file" id="upload-input" accept="image/*" multiple hidden>
+                <button type="button" id="upload-btn" class="primary-btn" data-i18n="uploadBtn">画像を選ぶ</button>
+                <p class="hint" id="upload-status"></p>
+            </section>
+
+            <section class="portal-section storage-filter-section">
+                <div class="storage-filter-row">
+                    <input type="text" id="tag-filter-input" class="storage-tag-input" data-i18n-placeholder="tagFilterPlaceholder" placeholder="タグで絞り込み">
+                    <button type="button" id="favorite-filter-btn" class="secondary-btn" data-i18n="favoriteFilterBtn">★お気に入りのみ</button>
+                </div>
+            </section>
+
+            <section class="portal-section storage-gallery-section">
+                <div class="storage-gallery-grid" id="gallery-grid">
+                    <!-- JSで画像カードを挿入 -->
+                </div>
+                <p class="hint storage-empty-hint hidden" id="gallery-empty-hint" data-i18n="galleryEmpty">まだ画像がありません</p>
+            </section>
+
+        </div>
+
+    </main>
+
+    <footer class="portal-footer">
+        <a href="https://x.com/uko_dayo_" target="_blank" rel="noopener noreferrer" class="twitter-link">
+            <img src="Image/twitter_image.png" alt="X(Twitter)" class="twitter-icon">
+        </a>
+        <a href="https://t.co/0jAcAV2GJv" target="_blank" rel="noopener" class="twitter-link">
+            <img src="Image/discord_image.png" alt="Discord" class="twitter-icon">
+        </a>
+        <span id="uko-account-status-slot"></span>
+    </footer>
+
+    <span class="site-version" id="site-version">v1.0</span>
+
+    <script type="module" src="firebaseConfig.js"></script>
+    <script type="module" src="script.js"></script>
+    <script type="module" src="https://uko05.github.io/24_AccountCenter/account-status.js"></script>
+
+    <!-- 共通サイドバー -->
+    <!-- ローカル確認用: -->
+    <script src="./shared/sidebar.js"></script>
+    <!-- 本番（GitHub Pages公開後はこちらに切り替え）:
+    <script src="https://uko05.github.io/00_TopPage/shared/sidebar.js"></script>
+    -->
+</body>
+</html>
