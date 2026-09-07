@@ -8,9 +8,9 @@
 import { auth, db, storage, storageBucket } from './firebaseConfig.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
-  collection, doc, getDoc, setDoc, updateDoc, query, where, orderBy, onSnapshot, serverTimestamp,
+  collection, doc, getDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
-import { ref, uploadBytes } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
+import { ref, uploadBytes, deleteObject } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
 
 const loginGate   = document.getElementById('login-gate');
 const storageApp  = document.getElementById('storage-app');
@@ -179,6 +179,25 @@ function renderGallery() {
       if (img.viewUrl) window.open(img.viewUrl, '_blank', 'noopener');
     });
 
+    // ブラウザ標準の右クリックメニュー(「名前を付けて画像を保存」等)は出さず、
+    // このサイト独自のメニュー(削除/ダウンロード/共有用URL)を表示する。
+    thumb.draggable = false;
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      openContextMenu(e.pageX, e.pageY, [
+        { label: '拡大表示', onClick: () => { if (img.viewUrl) window.open(img.viewUrl, '_blank', 'noopener'); } },
+        { label: 'ダウンロード', onClick: () => downloadImage(img) },
+        { label: '共有用URLをコピー', onClick: () => copyShareUrl(img) },
+        {
+          label: '削除する',
+          danger: true,
+          onClick: () => {
+            if (confirm('この画像を削除します。元に戻せません。よろしいですか？')) deleteImage(img);
+          },
+        },
+      ]);
+    });
+
     galleryGrid.appendChild(card);
   }
 }
@@ -188,6 +207,114 @@ async function toggleFavorite(imageId, next) {
     await updateDoc(doc(db, IMAGES_COLLECTION, imageId), { favorite: next });
   } catch (e) {
     console.error('[storage] toggle favorite failed', e);
+  }
+}
+
+// ===== 独自の右クリックメニュー =====
+let activeContextMenu = null;
+function closeContextMenu() {
+  if (activeContextMenu) {
+    activeContextMenu.remove();
+    activeContextMenu = null;
+  }
+}
+document.addEventListener('click', closeContextMenu);
+document.addEventListener('contextmenu', (e) => {
+  // メニュー自身の上での右クリック(無い想定だが)以外は閉じる
+  if (activeContextMenu && !activeContextMenu.contains(e.target)) closeContextMenu();
+});
+document.addEventListener('scroll', closeContextMenu, true);
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeContextMenu(); });
+
+function openContextMenu(pageX, pageY, items) {
+  closeContextMenu();
+  const menu = document.createElement('div');
+  menu.className = 'storage-context-menu';
+  items.forEach(({ label, onClick, danger }) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = label;
+    if (danger) btn.classList.add('danger');
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeContextMenu();
+      onClick();
+    });
+    menu.appendChild(btn);
+  });
+  document.body.appendChild(menu);
+  activeContextMenu = menu;
+
+  // 画面外にはみ出さないよう位置を調整する
+  menu.style.left = `${pageX}px`;
+  menu.style.top = `${pageY}px`;
+  const rect = menu.getBoundingClientRect();
+  const overflowX = rect.right - (window.scrollX + window.innerWidth);
+  const overflowY = rect.bottom - (window.scrollY + window.innerHeight);
+  if (overflowX > 0) menu.style.left = `${pageX - overflowX}px`;
+  if (overflowY > 0) menu.style.top = `${pageY - overflowY}px`;
+}
+
+// ===== 簡易トースト通知 =====
+let toastTimer = null;
+function showToast(message) {
+  let toastEl = document.getElementById('storage-toast');
+  if (!toastEl) {
+    toastEl = document.createElement('div');
+    toastEl.id = 'storage-toast';
+    toastEl.className = 'storage-toast';
+    document.body.appendChild(toastEl);
+  }
+  toastEl.textContent = message;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2400);
+}
+
+// ===== ダウンロード/共有URL/削除 =====
+async function downloadImage(img) {
+  try {
+    const res = await fetch(img.viewUrl);
+    if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+    const blob = await res.blob();
+    const extMatch = img.viewUrl.match(/\.([a-zA-Z0-9]+)\?alt=media/);
+    const ext = extMatch ? extMatch[1] : 'jpg';
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objUrl;
+    a.download = `${img.id}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objUrl);
+  } catch (e) {
+    console.error('[storage] download failed', e);
+    showToast('ダウンロードに失敗しました。');
+  }
+}
+
+async function copyShareUrl(img) {
+  try {
+    await navigator.clipboard.writeText(img.viewUrl);
+    showToast('共有用URLをコピーしました。');
+  } catch (e) {
+    console.error('[storage] copy url failed', e);
+    // クリップボードAPIが使えない環境向けのフォールバック
+    prompt('このURLをコピーしてください:', img.viewUrl);
+  }
+}
+
+async function deleteImage(img) {
+  try {
+    const jobs = [];
+    if (img.thumbPath) jobs.push(deleteObject(ref(storage, img.thumbPath)).catch(() => {}));
+    if (img.mainPath) jobs.push(deleteObject(ref(storage, img.mainPath)).catch(() => {}));
+    await Promise.all(jobs);
+    await deleteDoc(doc(db, IMAGES_COLLECTION, img.id));
+    showToast('画像を削除しました。');
+  } catch (e) {
+    console.error('[storage] delete failed', e);
+    showToast('削除に失敗しました。');
   }
 }
 
@@ -404,6 +531,8 @@ async function uploadOneFile(file, uid, useOriginal) {
     moderationStatus: 'pending',
     viewUrl: publicDownloadUrl(mainPath),
     thumbUrl: publicDownloadUrl(thumbPath),
+    mainPath,
+    thumbPath,
     shareEnabled: false,
     isOriginal,
   });
