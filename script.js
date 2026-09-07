@@ -5,12 +5,12 @@
 // Firestore(screenshotStorageImages)・Storage(screenshotStorage/)のルールは
 // 24_AccountCenterリポジトリのfirestore.rules/storage.rulesにある(実装・デプロイ済み)。
 
-import { auth, db, storage } from './firebaseConfig.js';
+import { auth, db, storage, storageBucket } from './firebaseConfig.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   collection, doc, getDoc, setDoc, updateDoc, query, where, orderBy, onSnapshot, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
-import { ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
+import { ref, uploadBytes } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
 
 const loginGate   = document.getElementById('login-gate');
 const storageApp  = document.getElementById('storage-app');
@@ -256,49 +256,52 @@ const ORIGINAL_EXT_BY_TYPE = {
   'image/bmp': 'bmp',
 };
 
+// Storageの読み取りルールがどのパスも公開(if true)なので、getDownloadURL()の
+// ような署名付きURLは不要で、標準のダウンロードURL形式をパスから直接組み立てられる。
+function publicDownloadUrl(path) {
+  return `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o/${encodeURIComponent(path)}?alt=media`;
+}
+
 async function uploadOneFile(file, uid, useOriginal) {
   const nativeImg = await loadImageFromFile(file);
-  const thumbBlob = await resizeToWebp(nativeImg, THUMB_MAX_SIDE, WEBP_QUALITY);
-
-  const imageId = doc(collection(db, IMAGES_COLLECTION)).id;
-  const thumbRef = ref(storage, `${STORAGE_ROOT}/${uid}/${imageId}/thumb.webp`);
-  await uploadBytes(thumbRef, thumbBlob, { contentType: 'image/webp' });
 
   // 「元の画像のまま保存」がON(UPointで解放済み)なら、リサイズ/圧縮せず
   // 選んだファイルをそのままアップロードする。対応していない形式の場合は
   // 従来通りWebPへ変換する(ORIGINAL_EXT_BY_TYPEに無ければフォールバック)。
   const ext = ORIGINAL_EXT_BY_TYPE[file.type];
   const isOriginal = !!(useOriginal && ext);
+  const mainFilename = isOriginal ? `original.${ext}` : 'view.webp';
+  const mainContentType = isOriginal ? file.type : 'image/webp';
 
-  let viewRef;
-  if (isOriginal) {
-    viewRef = ref(storage, `${STORAGE_ROOT}/${uid}/${imageId}/original.${ext}`);
-    await uploadBytes(viewRef, file, { contentType: file.type });
-  } else {
-    const viewBlob = await resizeToWebp(nativeImg, VIEW_MAX_SIDE, WEBP_QUALITY);
-    viewRef = ref(storage, `${STORAGE_ROOT}/${uid}/${imageId}/view.webp`);
-    await uploadBytes(viewRef, viewBlob, { contentType: 'image/webp' });
-  }
+  const imageId = doc(collection(db, IMAGES_COLLECTION)).id;
+  const thumbPath = `${STORAGE_ROOT}/${uid}/${imageId}/thumb.webp`;
+  const mainPath  = `${STORAGE_ROOT}/${uid}/${imageId}/${mainFilename}`;
 
-  const [viewUrl, thumbUrl] = await Promise.all([
-    getDownloadURL(viewRef),
-    getDownloadURL(thumbRef),
-  ]);
-
-  // moderationStatus: 'pending'のまま作成する。SafeSearch判定用のCloud Functionが
-  // Storageへの書き込みをトリガーに動き、'approved'/'flagged'へ更新するか、
-  // 明確に危険な場合はファイルごと削除する想定(未実装、CLAUDE.md参照)。
+  // SafeSearchモデレーション用Cloud Function(Storageの書き込み完了トリガー)は
+  // 判定結果をこのFirestoreドキュメントにmergeで書き込みに来る。そのトリガーは
+  // Storageアップロード完了と同時に走るため、ドキュメントを先に作っておかないと
+  // 「ドキュメントがまだ無い→Functionが部分的なドキュメントを作る→直後にこの
+  // クライアントのsetDocが丸ごと上書きしてモデレーション結果が消える」という
+  // 競合が起きる。そのためStorageへのアップロードより先にここでFirestoreへ
+  // 書き込む(URLもgetDownloadURL()を待たず決定的に組み立てられるので、
+  // アップロード前でも先に確定できる)。
   await setDoc(doc(db, IMAGES_COLLECTION, imageId), {
     ownerUid: uid,
     createdAt: serverTimestamp(),
     tags: [],
     favorite: false,
     moderationStatus: 'pending',
-    viewUrl,
-    thumbUrl,
+    viewUrl: publicDownloadUrl(mainPath),
+    thumbUrl: publicDownloadUrl(thumbPath),
     shareEnabled: false,
     isOriginal,
   });
+
+  const thumbBlob = await resizeToWebp(nativeImg, THUMB_MAX_SIDE, WEBP_QUALITY);
+  await uploadBytes(ref(storage, thumbPath), thumbBlob, { contentType: 'image/webp' });
+
+  const mainBlob = isOriginal ? file : await resizeToWebp(nativeImg, VIEW_MAX_SIDE, WEBP_QUALITY);
+  await uploadBytes(ref(storage, mainPath), mainBlob, { contentType: mainContentType });
 }
 
 function loadImageFromFile(file) {
