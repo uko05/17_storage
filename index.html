@@ -76,6 +76,14 @@
 
         </div>
 
+        <!-- 管理者(自分)専用: SafeSearchで保留(flagged)になった画像の確認画面 -->
+        <section class="portal-section hidden" id="admin-section">
+            <h2>モデレーション確認(管理者専用)</h2>
+            <p class="hint">SafeSearchで「グレーゾーン」と判定され、公開が保留されている画像です。7日間確認しないと自動的に削除されます。</p>
+            <div class="storage-admin-list" id="admin-flagged-list"></div>
+            <p class="hint hidden" id="admin-flagged-empty">保留中の画像はありません。</p>
+        </section>
+
     </main>
 
     <footer class="portal-footer">

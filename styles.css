@@ -234,6 +234,40 @@ body.portal-page {
 
 .storage-empty-hint { padding: 20px 0; }
 
+/* ===== 管理者用モデレーション確認 ===== */
+.storage-admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.storage-admin-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  background: #fff;
+}
+.storage-admin-card img {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.storage-admin-card-meta {
+  flex: 1;
+  font-size: 0.8rem;
+  color: #555;
+  word-break: break-all;
+}
+.storage-admin-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 /* フッター */
 .portal-footer {
   text-align: center;

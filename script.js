@@ -28,6 +28,14 @@ const favoriteFilterBtn = document.getElementById('favorite-filter-btn');
 const galleryGrid      = document.getElementById('gallery-grid');
 const galleryEmptyHint = document.getElementById('gallery-empty-hint');
 
+const adminSection      = document.getElementById('admin-section');
+const adminFlaggedList  = document.getElementById('admin-flagged-list');
+const adminFlaggedEmpty = document.getElementById('admin-flagged-empty');
+
+// FriendBoard(board.js)のADMIN_UIDと同一人物。管理者ロールの一般化は
+// 将来的な課題として両サイトで共通のメモが残っている。
+const ADMIN_UID = 'UPInlRxp2eM8OI3p18UU1d3OzNc2';
+
 const IMAGES_COLLECTION = 'screenshotStorageImages';
 const STORAGE_ROOT = 'screenshotStorage';
 const VIEW_MAX_SIDE  = 1920;
@@ -47,11 +55,13 @@ let unsubscribeSitePerks = null;
 let allImages = [];       // 自分がownerの画像を全件(Firestoreの現在の値)
 let favoriteOnly = false;
 let tagFilterText = '';
+let unsubscribeAdminFlagged = null;
 
 // ===== ログイン状態でメイン画面の出し分け =====
 onAuthStateChanged(auth, async (user) => {
   if (unsubscribeGallery) { unsubscribeGallery(); unsubscribeGallery = null; }
   if (unsubscribeSitePerks) { unsubscribeSitePerks(); unsubscribeSitePerks = null; }
+  if (unsubscribeAdminFlagged) { unsubscribeAdminFlagged(); unsubscribeAdminFlagged = null; }
 
   if (user) {
     currentUid = user.uid;
@@ -64,12 +74,20 @@ onAuthStateChanged(auth, async (user) => {
     // accountLinksで一度引いてからomikujiUsersを見に行く(userAvatars等と同じ経路)。
     const omikujiUserId = await resolveOmikujiUserId(currentUid);
     if (omikujiUserId) unsubscribeSitePerks = startSitePerksListener(omikujiUserId);
+
+    if (currentUid === ADMIN_UID) {
+      adminSection.classList.remove('hidden');
+      unsubscribeAdminFlagged = startAdminFlaggedListener();
+    } else {
+      adminSection.classList.add('hidden');
+    }
   } else {
     currentUid = null;
     allImages = [];
     originalUploadUnlocked = false;
     extraDailyUploads = 0;
     originalUploadRow.classList.add('hidden');
+    adminSection.classList.add('hidden');
     loginGate.classList.remove('hidden');
     storageApp.classList.add('hidden');
   }
@@ -171,6 +189,99 @@ async function toggleFavorite(imageId, next) {
   } catch (e) {
     console.error('[storage] toggle favorite failed', e);
   }
+}
+
+// ===== 管理者用: モデレーション確認(flagged画像の承認/却下) =====
+function startAdminFlaggedListener() {
+  const q = query(
+    collection(db, IMAGES_COLLECTION),
+    where('moderationStatus', '==', 'flagged'),
+    orderBy('flaggedAt', 'desc'),
+  );
+  return onSnapshot(q, (snap) => {
+    renderAdminFlagged(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  }, (e) => console.error('[storage] admin flagged listen failed', e));
+}
+
+function renderAdminFlagged(items) {
+  adminFlaggedList.innerHTML = '';
+  adminFlaggedEmpty.classList.toggle('hidden', items.length > 0);
+
+  for (const img of items) {
+    const card = document.createElement('div');
+    card.className = 'storage-admin-card';
+
+    const thumb = document.createElement('img');
+    thumb.src = img.thumbUrl || img.viewUrl || '';
+    thumb.alt = '';
+    card.appendChild(thumb);
+
+    const meta = document.createElement('div');
+    meta.className = 'storage-admin-card-meta';
+    const reasonLine = img.flaggedReason === 'safesearch_error'
+      ? '(SafeSearch判定でエラーが発生したため保留)'
+      : '';
+    meta.innerHTML = `
+      <div>投稿者UID: ${escapeHtml(img.ownerUid || '-')}</div>
+      <div>保留日時: ${fmtTimestamp(img.flaggedAt)}</div>
+      ${reasonLine ? `<div>${reasonLine}</div>` : ''}
+    `;
+
+    const actions = document.createElement('div');
+    actions.className = 'storage-admin-card-actions';
+
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'secondary-btn';
+    openBtn.textContent = '拡大表示';
+    openBtn.addEventListener('click', () => {
+      if (img.viewUrl) window.open(img.viewUrl, '_blank', 'noopener');
+    });
+
+    const approveBtn = document.createElement('button');
+    approveBtn.type = 'button';
+    approveBtn.className = 'primary-btn';
+    approveBtn.textContent = '公開する';
+    approveBtn.addEventListener('click', () => moderateFlaggedImage(img.id, 'approved'));
+
+    const rejectBtn = document.createElement('button');
+    rejectBtn.type = 'button';
+    rejectBtn.className = 'secondary-btn';
+    rejectBtn.textContent = '削除する';
+    rejectBtn.addEventListener('click', () => {
+      if (confirm('この画像を削除します。よろしいですか？')) moderateFlaggedImage(img.id, 'removed');
+    });
+
+    actions.appendChild(openBtn);
+    actions.appendChild(approveBtn);
+    actions.appendChild(rejectBtn);
+    meta.appendChild(actions);
+    card.appendChild(meta);
+    adminFlaggedList.appendChild(card);
+  }
+}
+
+async function moderateFlaggedImage(imageId, nextStatus) {
+  try {
+    await updateDoc(doc(db, IMAGES_COLLECTION, imageId), {
+      moderationStatus: nextStatus,
+      shareEnabled: false,
+      moderatedAt: serverTimestamp(),
+    });
+  } catch (e) {
+    console.error('[storage] admin moderate failed', e);
+  }
+}
+
+function fmtTimestamp(ts) {
+  if (!ts?.toDate) return '-';
+  return ts.toDate().toLocaleString('ja-JP');
+}
+
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
 }
 
 tagFilterInput.addEventListener('input', () => {
