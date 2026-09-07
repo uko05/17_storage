@@ -15,6 +15,26 @@
   表示用は長辺1920px、一覧のサムネイルは長辺400px、quality 0.85。
   (`script.js`の`resizeToWebp()`。94_gazouのcanvasリサイズと同じ考え方)
 
+## 画像の削除・右クリックメニュー(実装済み 2026-09-08)
+ギャラリーの画像を右クリックすると、ブラウザ標準のメニュー(「名前を付けて
+画像を保存」等)は`preventDefault()`で出さず、独自メニュー(拡大表示/
+ダウンロード/共有用URLをコピー/削除する)を表示する(`script.js`の
+`openContextMenu()`)。モバイルの長押しメニューはブラウザ側の挙動が
+異なり、JSだけでは完全には抑止できない可能性がある(未検証)。
+
+削除は「Storageの実ファイル(thumb+view/original)を`deleteObject()`で消す→
+Firestoreドキュメントを`deleteDoc()`で消す」の順で行う。そのため
+`mainPath`/`thumbPath`(Storageのパス文字列)もFirestoreドキュメントに
+保存するようにした(`viewUrl`/`thumbUrl`はダウンロードURルであってパスでは
+ないため、削除時に`ref()`へ渡すパスが別途必要)。**この変更より前に
+アップロードされた画像には`mainPath`/`thumbPath`が無いので、削除ボタンが
+効かない可能性がある**(テスト投稿があれば再アップロードして確認)。
+
+Storage側は`allow write`(create/update用、`request.resource`の存在を
+前提にした条件)とは別に`allow delete: if request.auth.uid == uid;`を
+明示的に追加する必要があった(deleteリクエストには`request.resource`が
+無いため、`allow write`の条件だけでは常に拒否されてしまう)。
+
 ## データモデル(実装済み・script.js)
 - Storage: `screenshotStorage/{uid}/{imageId}/view.webp`(または`original.{ext}`)
   と `.../thumb.webp`
