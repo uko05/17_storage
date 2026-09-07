@@ -219,10 +219,6 @@ function closeContextMenu() {
   }
 }
 document.addEventListener('click', closeContextMenu);
-document.addEventListener('contextmenu', (e) => {
-  // メニュー自身の上での右クリック(無い想定だが)以外は閉じる
-  if (activeContextMenu && !activeContextMenu.contains(e.target)) closeContextMenu();
-});
 document.addEventListener('scroll', closeContextMenu, true);
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeContextMenu(); });
 
