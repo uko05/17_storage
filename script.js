@@ -68,6 +68,7 @@ onAuthStateChanged(auth, async (user) => {
     currentUid = null;
     allImages = [];
     originalUploadUnlocked = false;
+    extraDailyUploads = 0;
     originalUploadRow.classList.add('hidden');
     loginGate.classList.remove('hidden');
     storageApp.classList.add('hidden');
@@ -85,12 +86,19 @@ async function resolveOmikujiUserId(uid) {
 }
 
 let originalUploadUnlocked = false;
+let extraDailyUploads = 0;
 function startSitePerksListener(omikujiUserId) {
   return onSnapshot(doc(db, 'omikujiUsers', omikujiUserId), (snap) => {
-    originalUploadUnlocked = !!snap.data()?.sitePerks?.storage17?.originalUpload;
+    const perks = snap.data()?.sitePerks?.storage17 || {};
+    originalUploadUnlocked = !!perks.originalUpload;
+    extraDailyUploads = perks.extraDailyUploads || 0;
     originalUploadRow.classList.toggle('hidden', !originalUploadUnlocked);
     if (!originalUploadUnlocked) originalUploadCheckbox.checked = false;
   }, (e) => console.error('[storage] site perks listen failed', e));
+}
+
+function myDailyUploadLimit() {
+  return DAILY_UPLOAD_LIMIT + extraDailyUploads;
 }
 
 // ===== ギャラリー購読 =====
@@ -207,10 +215,11 @@ uploadInput.addEventListener('change', async (e) => {
   let originalUploadedToday = countUploadedToday(true);
   let fellBackToCompressed = false;
 
+  const dailyLimit = myDailyUploadLimit();
   uploadBtn.disabled = true;
   for (let i = 0; i < files.length; i++) {
-    if (uploadedToday >= DAILY_UPLOAD_LIMIT) {
-      uploadStatus.textContent = `1日のアップロード上限(${DAILY_UPLOAD_LIMIT}枚)に達したため、残りは保存できませんでした。`;
+    if (uploadedToday >= dailyLimit) {
+      uploadStatus.textContent = `1日のアップロード上限(${dailyLimit}枚)に達したため、残りは保存できませんでした。`;
       break;
     }
     // 元画像保存の1日上限に達している場合は、アップロード自体は続行しつつ
