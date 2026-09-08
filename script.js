@@ -14,6 +14,8 @@ import { ref, uploadBytes, deleteObject } from 'https://www.gstatic.com/firebase
 
 const loginGate   = document.getElementById('login-gate');
 const storageApp  = document.getElementById('storage-app');
+const siteTitle   = document.getElementById('site-title');
+const homeSubDesc = document.getElementById('home-sub-desc');
 
 const uploadInput  = document.getElementById('upload-input');
 const uploadBtn    = document.getElementById('upload-btn');
@@ -66,6 +68,10 @@ onAuthStateChanged(auth, async (user) => {
     currentUid = user.uid;
     loginGate.classList.add('hidden');
     storageApp.classList.remove('hidden');
+    // ログイン済みの人には、サイトの説明は不要なのでシンプルにする
+    // (未ログインの人には#login-gateの案内と合わせて引き続き表示する)。
+    siteTitle.classList.add('hidden');
+    homeSubDesc.classList.add('hidden');
     startGalleryListener(currentUid);
 
     // 「元の画像のまま保存」はUPointでの交換で解放される機能。sitePerksは
@@ -87,6 +93,8 @@ onAuthStateChanged(auth, async (user) => {
     extraDailyUploads = 0;
     originalUploadRow.classList.add('hidden');
     adminSection.classList.add('hidden');
+    siteTitle.classList.remove('hidden');
+    homeSubDesc.classList.remove('hidden');
     loginGate.classList.remove('hidden');
     storageApp.classList.add('hidden');
   }
