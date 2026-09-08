@@ -17,7 +17,6 @@ const storageApp  = document.getElementById('storage-app');
 
 const uploadInput  = document.getElementById('upload-input');
 const uploadBtn    = document.getElementById('upload-btn');
-const uploadStatus = document.getElementById('upload-status');
 
 const originalUploadRow = document.getElementById('original-upload-row');
 const originalUploadCheckbox = document.getElementById('original-upload-checkbox');
@@ -131,7 +130,7 @@ function startGalleryListener(uid) {
     renderGallery();
   }, (e) => {
     console.error('[storage] gallery listen failed', e);
-    uploadStatus.textContent = '画像一覧の取得に失敗しました(権限設定が未対応の可能性があります)。';
+    showToast('画像一覧の取得に失敗しました(権限設定が未対応の可能性があります)。');
   });
 }
 
@@ -176,7 +175,7 @@ function renderGallery() {
     card.appendChild(favBtn);
 
     card.addEventListener('click', () => {
-      if (img.viewUrl) window.open(img.viewUrl, '_blank', 'noopener');
+      if (img.viewUrl) openLightbox(img.viewUrl);
     });
 
     // ブラウザ標準の右クリックメニュー(「名前を付けて画像を保存」等)は出さず、
@@ -185,7 +184,7 @@ function renderGallery() {
     card.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       openContextMenu(e.pageX, e.pageY, [
-        { label: '拡大表示', onClick: () => { if (img.viewUrl) window.open(img.viewUrl, '_blank', 'noopener'); } },
+        { label: '拡大表示', onClick: () => { if (img.viewUrl) openLightbox(img.viewUrl); } },
         { label: 'ダウンロード', onClick: () => downloadImage(img) },
         { label: '共有用URLをコピー', onClick: () => copyShareUrl(img) },
         {
@@ -250,6 +249,31 @@ function openContextMenu(pageX, pageY, items) {
   if (overflowX > 0) menu.style.left = `${pageX - overflowX}px`;
   if (overflowY > 0) menu.style.top = `${pageY - overflowY}px`;
 }
+
+// ===== 拡大表示(ポップアップ) =====
+function openLightbox(url) {
+  let lb = document.getElementById('storage-lightbox');
+  if (!lb) {
+    lb = document.createElement('div');
+    lb.id = 'storage-lightbox';
+    lb.className = 'storage-lightbox';
+    lb.innerHTML = `
+      <button type="button" class="storage-lightbox-close" aria-label="閉じる">×</button>
+      <img class="storage-lightbox-img" alt="">
+    `;
+    lb.addEventListener('click', (e) => {
+      if (e.target === lb || e.target.classList.contains('storage-lightbox-close')) closeLightbox();
+    });
+    document.body.appendChild(lb);
+  }
+  lb.querySelector('.storage-lightbox-img').src = url;
+  lb.classList.add('open');
+}
+function closeLightbox() {
+  const lb = document.getElementById('storage-lightbox');
+  if (lb) lb.classList.remove('open');
+}
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
 
 // ===== 簡易トースト通知 =====
 let toastTimer = null;
@@ -358,7 +382,7 @@ function renderAdminFlagged(items) {
     openBtn.className = 'secondary-btn';
     openBtn.textContent = '拡大表示';
     openBtn.addEventListener('click', () => {
-      if (img.viewUrl) window.open(img.viewUrl, '_blank', 'noopener');
+      if (img.viewUrl) openLightbox(img.viewUrl);
     });
 
     const approveBtn = document.createElement('button');
@@ -448,12 +472,14 @@ uploadInput.addEventListener('change', async (e) => {
   let uploadedToday = countUploadedToday(false);
   let originalUploadedToday = countUploadedToday(true);
   let fellBackToCompressed = false;
+  let hitDailyLimit = false;
 
   const dailyLimit = myDailyUploadLimit();
   uploadBtn.disabled = true;
   for (let i = 0; i < files.length; i++) {
     if (uploadedToday >= dailyLimit) {
-      uploadStatus.textContent = `1日のアップロード上限(${dailyLimit}枚)に達したため、残りは保存できませんでした。`;
+      hitDailyLimit = true;
+      showToast(`1日のアップロード上限(${dailyLimit}枚)に達したため、残りは保存できませんでした。`);
       break;
     }
     // 元画像保存の1日上限に達している場合は、アップロード自体は続行しつつ
@@ -462,22 +488,22 @@ uploadInput.addEventListener('change', async (e) => {
     const useOriginalForThis = wantsOriginal && originalUploadedToday < DAILY_ORIGINAL_UPLOAD_LIMIT;
     if (wantsOriginal && !useOriginalForThis) fellBackToCompressed = true;
 
-    uploadStatus.textContent = `アップロード中... (${i + 1}/${files.length})`;
+    if (files.length > 1) showToast(`アップロード中... (${i + 1}/${files.length})`);
     try {
       await uploadOneFile(files[i], currentUid, useOriginalForThis);
       uploadedToday++;
       if (useOriginalForThis) originalUploadedToday++;
     } catch (err) {
       console.error('[storage] upload failed', err);
-      uploadStatus.textContent = `「${files[i].name}」のアップロードに失敗しました。`;
+      showToast(`「${files[i].name}」のアップロードに失敗しました。`);
       uploadBtn.disabled = false;
       return;
     }
   }
-  if (uploadStatus.textContent.startsWith('アップロード中')) {
-    uploadStatus.textContent = fellBackToCompressed
+  if (!hitDailyLimit) {
+    showToast(fellBackToCompressed
       ? `アップロードが完了しました(元画像保存は1日${DAILY_ORIGINAL_UPLOAD_LIMIT}枚までのため、一部は圧縮版で保存しました)。`
-      : 'アップロードが完了しました。';
+      : 'アップロードが完了しました。');
   }
   uploadBtn.disabled = false;
 });
