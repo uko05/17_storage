@@ -25,9 +25,24 @@ const originalUploadCheckbox = document.getElementById('original-upload-checkbox
 
 const tagFilterInput   = document.getElementById('tag-filter-input');
 const favoriteFilterBtn = document.getElementById('favorite-filter-btn');
+const selectModeToggle = document.getElementById('select-mode-toggle');
 
 const galleryGrid      = document.getElementById('gallery-grid');
 const galleryEmptyHint = document.getElementById('gallery-empty-hint');
+
+const tagPicker            = document.getElementById('tag-picker');
+const tagPickerTitle       = document.getElementById('tag-picker-title');
+const tagPickerPresets     = document.getElementById('tag-picker-presets');
+const tagPickerCustomChips = document.getElementById('tag-picker-custom-chips');
+const tagPickerCustomInput = document.getElementById('tag-picker-custom-input');
+const tagPickerAddCustomBtn = document.getElementById('tag-picker-add-custom-btn');
+const tagPickerCancelBtn   = document.getElementById('tag-picker-cancel-btn');
+const tagPickerApplyBtn    = document.getElementById('tag-picker-apply-btn');
+
+// タグ絞り込みが最初から空振りにならないよう用意した既定候補。
+// 右クリックのタグ選択ポップアップでも、この候補+ユーザーの自由入力タグを
+// 選べるようにしている(script.jsのopenTagPicker参照)。
+const PRESET_TAGS = ['原神', 'スタレ', 'イラスト', 'スクショ', 'ガチャ', 'コスプレ', 'その他', 'あとで見る'];
 
 const adminSection      = document.getElementById('admin-section');
 const adminFlaggedList  = document.getElementById('admin-flagged-list');
@@ -57,6 +72,19 @@ let allImages = [];       // 自分がownerの画像を全件(Firestoreの現在
 let favoriteOnly = false;
 let tagFilterText = '';
 let unsubscribeAdminFlagged = null;
+
+// ===== 複数選択モード(タグ一括付け用) =====
+let selectModeEnabled = false;
+let selectedImageIds = new Set();
+
+selectModeToggle.addEventListener('change', () => {
+  selectModeEnabled = selectModeToggle.checked;
+  galleryGrid.classList.toggle('select-mode', selectModeEnabled);
+  if (!selectModeEnabled) {
+    selectedImageIds.clear();
+    renderGallery();
+  }
+});
 
 // ===== ログイン状態でメイン画面の出し分け =====
 onAuthStateChanged(auth, async (user) => {
@@ -182,17 +210,38 @@ function renderGallery() {
     });
     card.appendChild(favBtn);
 
+    // 複数選択モード用チェックボックス(select-modeの時だけCSSで表示)。
+    const selectCb = document.createElement('input');
+    selectCb.type = 'checkbox';
+    selectCb.className = 'storage-card-select';
+    selectCb.checked = selectedImageIds.has(img.id);
+    selectCb.addEventListener('click', (e) => e.stopPropagation());
+    selectCb.addEventListener('change', () => {
+      if (selectCb.checked) selectedImageIds.add(img.id);
+      else selectedImageIds.delete(img.id);
+    });
+    card.appendChild(selectCb);
+
     card.addEventListener('click', () => {
       if (img.viewUrl) openLightbox(img.viewUrl);
     });
 
     // ブラウザ標準の右クリックメニュー(「名前を付けて画像を保存」等)は出さず、
-    // このサイト独自のメニュー(削除/ダウンロード/共有用URL)を表示する。
+    // このサイト独自のメニュー(削除/ダウンロード/共有用URL/タグ)を表示する。
+    // 選択モードで1枚以上チェックが付いていれば、右クリックした画像に関わらず
+    // 選択中の全画像へまとめてタグを付けるメニューにする。
     thumb.draggable = false;
     card.addEventListener('contextmenu', (e) => {
       e.preventDefault();
+      if (selectedImageIds.size > 0) {
+        openContextMenu(e.pageX, e.pageY, [
+          { label: `タグを選択(${selectedImageIds.size}件に追加)`, onClick: () => openTagPicker([...selectedImageIds]) },
+        ]);
+        return;
+      }
       openContextMenu(e.pageX, e.pageY, [
         { label: '拡大表示', onClick: () => { if (img.viewUrl) openLightbox(img.viewUrl); } },
+        { label: 'タグを選択', onClick: () => openTagPicker([img.id]) },
         { label: 'ダウンロード', onClick: () => downloadImage(img) },
         { label: '共有用URLをコピー', onClick: () => copyShareUrl(img) },
         {
@@ -216,6 +265,107 @@ async function toggleFavorite(imageId, next) {
     console.error('[storage] toggle favorite failed', e);
   }
 }
+
+// ===== タグ選択ポップアップ =====
+// 1枚編集時: 既存タグをチェック/チップとして表示し、外す/足すで丸ごと置き換える。
+// 複数枚一括時: 画像ごとに既存タグが違うので混在表示はせず、チェック/追加した
+// タグを各画像の既存タグに"追加"するだけにする(既存タグの削除はしない)。
+let tagPickerTargetIds = [];
+let tagPickerCustomTags = [];
+
+function openTagPicker(imageIds) {
+  tagPickerTargetIds = imageIds;
+  const isSingle = imageIds.length === 1;
+  const targetImg = isSingle ? allImages.find((i) => i.id === imageIds[0]) : null;
+  const currentTags = (isSingle && Array.isArray(targetImg?.tags)) ? targetImg.tags : [];
+
+  tagPickerTitle.textContent = isSingle ? 'タグを選択' : `タグを選択(${imageIds.length}件に追加)`;
+
+  tagPickerPresets.innerHTML = '';
+  PRESET_TAGS.forEach((tag) => {
+    const label = document.createElement('label');
+    label.className = 'storage-tag-chip-option';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = tag;
+    cb.checked = currentTags.includes(tag);
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(tag));
+    tagPickerPresets.appendChild(label);
+  });
+
+  // 独自タグ(プリセットに無いもの)。1枚編集時は既存の独自タグをチップとして
+  // 表示し、×で外せる。複数枚一括時は空から始める(新規追加のみ)。
+  tagPickerCustomTags = isSingle ? currentTags.filter((t) => !PRESET_TAGS.includes(t)) : [];
+  tagPickerCustomInput.value = '';
+  renderTagPickerCustomChips();
+
+  tagPicker.classList.add('open');
+}
+
+function renderTagPickerCustomChips() {
+  tagPickerCustomChips.innerHTML = '';
+  tagPickerCustomTags.forEach((tag) => {
+    const chip = document.createElement('span');
+    chip.className = 'storage-tag-chip';
+    chip.textContent = tag;
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', () => {
+      tagPickerCustomTags = tagPickerCustomTags.filter((t) => t !== tag);
+      renderTagPickerCustomChips();
+    });
+    chip.appendChild(removeBtn);
+    tagPickerCustomChips.appendChild(chip);
+  });
+}
+
+tagPickerAddCustomBtn.addEventListener('click', () => {
+  const v = tagPickerCustomInput.value.trim();
+  tagPickerCustomInput.value = '';
+  if (!v || tagPickerCustomTags.includes(v) || PRESET_TAGS.includes(v)) return;
+  tagPickerCustomTags.push(v);
+  renderTagPickerCustomChips();
+});
+tagPickerCustomInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); tagPickerAddCustomBtn.click(); }
+});
+
+tagPickerCancelBtn.addEventListener('click', () => tagPicker.classList.remove('open'));
+tagPicker.addEventListener('click', (e) => {
+  if (e.target === tagPicker) tagPicker.classList.remove('open');
+});
+
+tagPickerApplyBtn.addEventListener('click', async () => {
+  const checkedPresets = [...tagPickerPresets.querySelectorAll('input:checked')].map((cb) => cb.value);
+  const pickedTags = [...checkedPresets, ...tagPickerCustomTags];
+  const isSingle = tagPickerTargetIds.length === 1;
+
+  try {
+    if (isSingle) {
+      await updateDoc(doc(db, IMAGES_COLLECTION, tagPickerTargetIds[0]), { tags: pickedTags });
+    } else {
+      await Promise.all(tagPickerTargetIds.map((id) => {
+        const img = allImages.find((i) => i.id === id);
+        const merged = Array.from(new Set([...(Array.isArray(img?.tags) ? img.tags : []), ...pickedTags]));
+        return updateDoc(doc(db, IMAGES_COLLECTION, id), { tags: merged });
+      }));
+    }
+    tagPicker.classList.remove('open');
+    if (!isSingle) {
+      selectedImageIds.clear();
+      selectModeToggle.checked = false;
+      selectModeEnabled = false;
+      galleryGrid.classList.remove('select-mode');
+    }
+    renderGallery();
+    showToast('タグを更新しました。');
+  } catch (e) {
+    console.error('[storage] tag update failed', e);
+    showToast('タグの更新に失敗しました。');
+  }
+});
 
 // ===== 独自の右クリックメニュー =====
 let activeContextMenu = null;

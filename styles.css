@@ -189,14 +189,27 @@ body.portal-page {
   align-items: center;
   justify-content: center;
 }
+.storage-select-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: #555;
+  cursor: pointer;
+  white-space: nowrap;
+}
 .storage-tag-input {
   flex: 1;
-  min-width: 160px;
+  min-width: 110px;
   padding: 10px 12px;
   border: 1px solid #ddd;
   border-radius: 8px;
   font-size: 16px;
   font-family: inherit;
+}
+#select-mode-hint {
+  text-align: center;
+  margin-top: 8px;
 }
 
 /* ===== ギャラリー ===== */
@@ -228,6 +241,16 @@ body.portal-page {
   text-shadow: 0 1px 3px rgba(0,0,0,0.6);
   color: #ffcc00;
 }
+.storage-card-select {
+  display: none;
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 20px;
+  height: 20px;
+  z-index: 1;
+}
+.storage-gallery-grid.select-mode .storage-card-select { display: block; }
 .storage-card-pending {
   position: absolute;
   inset: 0;
@@ -273,6 +296,95 @@ body.portal-page {
   line-height: 1;
   cursor: pointer;
   padding: 6px 10px;
+}
+
+/* ===== タグ選択ポップアップ ===== */
+.storage-tag-picker {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  background: rgba(0,0,0,0.5);
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.storage-tag-picker.open { display: flex; }
+.storage-tag-picker-inner {
+  background: #fff;
+  border-radius: 12px;
+  padding: 18px;
+  width: 100%;
+  max-width: 360px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.storage-tag-picker-title {
+  font-weight: bold;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.storage-tag-picker-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.storage-tag-chip-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 16px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.storage-tag-picker-custom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.storage-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px 5px 12px;
+  background: #f0f0f0;
+  border-radius: 16px;
+  font-size: 0.8rem;
+}
+.storage-tag-chip button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #888;
+  padding: 0 4px;
+}
+.storage-tag-picker-input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.storage-tag-picker-input-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  font-family: inherit;
+}
+.storage-tag-picker-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.storage-tag-picker-actions button {
+  width: auto;
+  padding: 8px 18px;
 }
 
 /* ===== 独自の右クリックメニュー ===== */
