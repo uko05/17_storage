@@ -376,9 +376,14 @@ function renderAdminFlagged(items) {
     const reasonLine = img.flaggedReason === 'safesearch_error'
       ? '(SafeSearch判定でエラーが発生したため保留)'
       : '';
+    const scores = img.safeSearchScores;
+    const scoresLine = scores
+      ? `<div>判定: adult=${escapeHtml(scores.adult)} / violence=${escapeHtml(scores.violence)} / racy=${escapeHtml(scores.racy)}</div>`
+      : '';
     meta.innerHTML = `
       <div>投稿者UID: ${escapeHtml(img.ownerUid || '-')}</div>
       <div>保留日時: ${fmtTimestamp(img.flaggedAt)}</div>
+      ${scoresLine}
       ${reasonLine ? `<div>${reasonLine}</div>` : ''}
     `;
 
