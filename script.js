@@ -24,8 +24,8 @@ const originalUploadRow = document.getElementById('original-upload-row');
 const originalUploadCheckbox = document.getElementById('original-upload-checkbox');
 
 const tagFilterList     = document.getElementById('tag-filter-list');
-const favoriteFilterBtn = document.getElementById('favorite-filter-btn');
 const selectModeToggle = document.getElementById('select-mode-toggle');
+const bulkDeleteBtn    = document.getElementById('bulk-delete-btn');
 
 const galleryGrid      = document.getElementById('gallery-grid');
 const galleryEmptyHint = document.getElementById('gallery-empty-hint');
@@ -60,7 +60,6 @@ let currentUid = null;
 let unsubscribeGallery = null;
 let unsubscribeSitePerks = null;
 let allImages = [];       // 自分がownerの画像を全件(Firestoreの現在の値)
-let favoriteOnly = false;
 let activeTagFilter = null; // 登録されているタグの中から選ぶ方式(自由入力ではない)
 let unsubscribeAdminFlagged = null;
 
@@ -70,11 +69,21 @@ let selectedImageIds = new Set();
 
 selectModeToggle.addEventListener('change', () => {
   selectModeEnabled = selectModeToggle.checked;
-  galleryGrid.classList.toggle('select-mode', selectModeEnabled);
   if (!selectModeEnabled) {
     selectedImageIds.clear();
     renderGallery();
   }
+});
+
+// 選択チェックは常時表示なので、このボタンは「複数選択」がONかどうかに
+// 関わらず、その時点で選択中の画像があれば削除できる。
+bulkDeleteBtn.addEventListener('click', () => {
+  if (selectedImageIds.size === 0) {
+    showToast('削除する画像を選んでください。');
+    return;
+  }
+  const ids = [...selectedImageIds];
+  if (confirm(`選択中の${ids.length}件を削除します。元に戻せません。よろしいですか？`)) deleteImages(ids);
 });
 
 // ===== ログイン状態でメイン画面の出し分け =====
@@ -194,7 +203,6 @@ function renderTagFilterList() {
 function renderGallery() {
   const filtered = allImages.filter((img) => {
     if (img.moderationStatus === 'removed') return false;
-    if (favoriteOnly && !img.favorite) return false;
     if (activeTagFilter) {
       const tags = Array.isArray(img.tags) ? img.tags : [];
       if (!tags.includes(activeTagFilter)) return false;
@@ -222,16 +230,7 @@ function renderGallery() {
       card.appendChild(pending);
     }
 
-    const favBtn = document.createElement('span');
-    favBtn.className = 'storage-card-fav';
-    favBtn.textContent = img.favorite ? '★' : '☆';
-    favBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleFavorite(img.id, !img.favorite);
-    });
-    card.appendChild(favBtn);
-
-    // 複数選択モード用チェックボックス(select-modeの時だけCSSで表示)。
+    // 選択チェックは常に表示(2026-09-10、複数選択モードON時だけの表示から変更)。
     // チェック自体は分かりにくいので、選択中は赤枠(.selected)を主な目印にする。
     const selectCb = document.createElement('input');
     selectCb.type = 'checkbox';
@@ -296,14 +295,6 @@ function renderGallery() {
     });
 
     galleryGrid.appendChild(card);
-  }
-}
-
-async function toggleFavorite(imageId, next) {
-  try {
-    await updateDoc(doc(db, IMAGES_COLLECTION, imageId), { favorite: next });
-  } catch (e) {
-    console.error('[storage] toggle favorite failed', e);
   }
 }
 
@@ -614,12 +605,6 @@ function escapeHtml(str) {
   }[c]));
 }
 
-favoriteFilterBtn.addEventListener('click', () => {
-  favoriteOnly = !favoriteOnly;
-  favoriteFilterBtn.classList.toggle('active', favoriteOnly);
-  renderGallery();
-});
-
 // ===== アップロード =====
 uploadBtn.addEventListener('click', () => uploadInput.click());
 
@@ -727,7 +712,6 @@ async function uploadOneFile(file, uid, useOriginal) {
     ownerUid: uid,
     createdAt: serverTimestamp(),
     tags: [],
-    favorite: false,
     moderationStatus: 'pending',
     viewUrl: publicDownloadUrl(mainPath),
     thumbUrl: publicDownloadUrl(thumbPath),

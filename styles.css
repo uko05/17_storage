@@ -202,11 +202,6 @@ body.portal-page {
   width: 18px;
   height: 18px;
 }
-#select-mode-hint {
-  text-align: center;
-  margin-top: 8px;
-}
-
 .storage-tag-filter-list {
   display: flex;
   flex-wrap: wrap;
@@ -259,16 +254,7 @@ body.portal-page {
   object-fit: cover;
   display: block;
 }
-.storage-card-fav {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  font-size: 18px;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.6);
-  color: #ffcc00;
-}
 .storage-card-select {
-  display: none;
   position: absolute;
   top: 6px;
   left: 6px;
@@ -277,7 +263,6 @@ body.portal-page {
   z-index: 1;
   accent-color: #e53935;
 }
-.storage-gallery-grid.select-mode .storage-card-select { display: block; }
 .storage-card-pending {
   position: absolute;
   inset: 0;
