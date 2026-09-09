@@ -30,18 +30,9 @@ const selectModeToggle = document.getElementById('select-mode-toggle');
 const galleryGrid      = document.getElementById('gallery-grid');
 const galleryEmptyHint = document.getElementById('gallery-empty-hint');
 
-const tagPicker            = document.getElementById('tag-picker');
-const tagPickerTitle       = document.getElementById('tag-picker-title');
-const tagPickerPresets     = document.getElementById('tag-picker-presets');
-const tagPickerCustomChips = document.getElementById('tag-picker-custom-chips');
-const tagPickerCustomInput = document.getElementById('tag-picker-custom-input');
-const tagPickerAddCustomBtn = document.getElementById('tag-picker-add-custom-btn');
-const tagPickerCancelBtn   = document.getElementById('tag-picker-cancel-btn');
-const tagPickerApplyBtn    = document.getElementById('tag-picker-apply-btn');
-
 // タグ絞り込みが最初から空振りにならないよう用意した既定候補。
-// 右クリックのタグ選択ポップアップでも、この候補+ユーザーの自由入力タグを
-// 選べるようにしている(script.jsのopenTagPicker参照)。
+// 右クリックメニューにもこの候補をそのまま縦に並べて出し、クリックした
+// その場でON/OFFする(別ポップアップは挟まない、script.jsのcontextmenu参照)。
 const PRESET_TAGS = ['原神', 'スタレ', 'イラスト', 'スクショ', 'ガチャ', 'コスプレ', 'その他', 'あとで見る'];
 
 const adminSection      = document.getElementById('admin-section');
@@ -268,22 +259,22 @@ function renderGallery() {
 
     // ブラウザ標準の右クリックメニュー(「名前を付けて画像を保存」等)は出さず、
     // このサイト独自のメニュー(削除/ダウンロード/共有用URL/タグ)を表示する。
+    // タグは「タグを選択」のようなワンクッションを挟まず、候補タグをそのまま
+    // 縦に並べて出し、クリックした瞬間にON/OFFする(2026-09-09)。
     // 選択モードで1枚以上チェックが付いていれば、右クリックした画像に関わらず
-    // 選択中の全画像へまとめてタグを付けるメニューにする。
+    // 選択中の全画像へまとめてタグを追加するメニューになる。
     thumb.draggable = false;
     card.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       if (selectedImageIds.size > 0) {
-        openContextMenu(e.pageX, e.pageY, [
-          { label: `タグを選択(${selectedImageIds.size}件に追加)`, onClick: () => openTagPicker([...selectedImageIds]) },
-        ]);
+        openContextMenu(e.pageX, e.pageY, buildTagMenuItems([...selectedImageIds]));
         return;
       }
       openContextMenu(e.pageX, e.pageY, [
         { label: '拡大表示', onClick: () => { if (img.viewUrl) openLightbox(img.viewUrl); } },
-        { label: 'タグを選択', onClick: () => openTagPicker([img.id]) },
         { label: 'ダウンロード', onClick: () => downloadImage(img) },
         { label: '共有用URLをコピー', onClick: () => copyShareUrl(img) },
+        ...buildTagMenuItems([img.id]),
         {
           label: '削除する',
           danger: true,
@@ -306,106 +297,63 @@ async function toggleFavorite(imageId, next) {
   }
 }
 
-// ===== タグ選択ポップアップ =====
-// 1枚編集時: 既存タグをチェック/チップとして表示し、外す/足すで丸ごと置き換える。
-// 複数枚一括時: 画像ごとに既存タグが違うので混在表示はせず、チェック/追加した
-// タグを各画像の既存タグに"追加"するだけにする(既存タグの削除はしない)。
-let tagPickerTargetIds = [];
-let tagPickerCustomTags = [];
-
-function openTagPicker(imageIds) {
-  tagPickerTargetIds = imageIds;
+// ===== 右クリックメニュー内のタグ一覧 =====
+// 「タグを選択」というワンクッションを挟まず、候補タグをそのまま右クリック
+// メニューに縦に並べ、クリックした瞬間にON/OFF(1枚編集)または追加(複数枚
+// 一括)する。複数枚一括時は画像ごとに既存タグが違うので、選んだタグを
+// 各画像の既存タグに"追加"するだけにする(既存タグの削除はしない)。
+function buildTagMenuItems(imageIds) {
   const isSingle = imageIds.length === 1;
   const targetImg = isSingle ? allImages.find((i) => i.id === imageIds[0]) : null;
   const currentTags = (isSingle && Array.isArray(targetImg?.tags)) ? targetImg.tags : [];
 
-  tagPickerTitle.textContent = isSingle ? 'タグを選択' : `タグを選択(${imageIds.length}件に追加)`;
-
-  tagPickerPresets.innerHTML = '';
-  PRESET_TAGS.forEach((tag) => {
-    const label = document.createElement('label');
-    label.className = 'storage-tag-chip-option';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.value = tag;
-    cb.checked = currentTags.includes(tag);
-    label.appendChild(cb);
-    label.appendChild(document.createTextNode(tag));
-    tagPickerPresets.appendChild(label);
+  const items = PRESET_TAGS.map((tag) => {
+    const has = currentTags.includes(tag);
+    return {
+      label: (isSingle ? (has ? '✓ ' : '　') : '') + tag,
+      onClick: () => (isSingle ? toggleTagOnImage(imageIds[0], tag, !has) : addTagToImages(imageIds, tag)),
+    };
   });
 
-  // 独自タグ(プリセットに無いもの)。1枚編集時は既存の独自タグをチップとして
-  // 表示し、×で外せる。複数枚一括時は空から始める(新規追加のみ)。
-  tagPickerCustomTags = isSingle ? currentTags.filter((t) => !PRESET_TAGS.includes(t)) : [];
-  tagPickerCustomInput.value = '';
-  renderTagPickerCustomChips();
-
-  tagPicker.classList.add('open');
-}
-
-function renderTagPickerCustomChips() {
-  tagPickerCustomChips.innerHTML = '';
-  tagPickerCustomTags.forEach((tag) => {
-    const chip = document.createElement('span');
-    chip.className = 'storage-tag-chip';
-    chip.textContent = tag;
-    const removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.textContent = '×';
-    removeBtn.addEventListener('click', () => {
-      tagPickerCustomTags = tagPickerCustomTags.filter((t) => t !== tag);
-      renderTagPickerCustomChips();
-    });
-    chip.appendChild(removeBtn);
-    tagPickerCustomChips.appendChild(chip);
+  items.push({
+    label: '＋ 新しいタグを追加',
+    onClick: () => {
+      const v = (prompt('追加するタグ名を入力してください') || '').trim();
+      if (!v) return;
+      if (isSingle) toggleTagOnImage(imageIds[0], v, true);
+      else addTagToImages(imageIds, v);
+    },
   });
+
+  return items;
 }
 
-tagPickerAddCustomBtn.addEventListener('click', () => {
-  const v = tagPickerCustomInput.value.trim();
-  tagPickerCustomInput.value = '';
-  if (!v || tagPickerCustomTags.includes(v) || PRESET_TAGS.includes(v)) return;
-  tagPickerCustomTags.push(v);
-  renderTagPickerCustomChips();
-});
-tagPickerCustomInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); tagPickerAddCustomBtn.click(); }
-});
-
-tagPickerCancelBtn.addEventListener('click', () => tagPicker.classList.remove('open'));
-tagPicker.addEventListener('click', (e) => {
-  if (e.target === tagPicker) tagPicker.classList.remove('open');
-});
-
-tagPickerApplyBtn.addEventListener('click', async () => {
-  const checkedPresets = [...tagPickerPresets.querySelectorAll('input:checked')].map((cb) => cb.value);
-  const pickedTags = [...checkedPresets, ...tagPickerCustomTags];
-  const isSingle = tagPickerTargetIds.length === 1;
-
+async function toggleTagOnImage(imageId, tag, add) {
   try {
-    if (isSingle) {
-      await updateDoc(doc(db, IMAGES_COLLECTION, tagPickerTargetIds[0]), { tags: pickedTags });
-    } else {
-      await Promise.all(tagPickerTargetIds.map((id) => {
-        const img = allImages.find((i) => i.id === id);
-        const merged = Array.from(new Set([...(Array.isArray(img?.tags) ? img.tags : []), ...pickedTags]));
-        return updateDoc(doc(db, IMAGES_COLLECTION, id), { tags: merged });
-      }));
-    }
-    tagPicker.classList.remove('open');
-    if (!isSingle) {
-      selectedImageIds.clear();
-      selectModeToggle.checked = false;
-      selectModeEnabled = false;
-      galleryGrid.classList.remove('select-mode');
-    }
-    renderGallery();
-    showToast('タグを更新しました。');
+    const img = allImages.find((i) => i.id === imageId);
+    const current = Array.isArray(img?.tags) ? img.tags : [];
+    const next = add ? Array.from(new Set([...current, tag])) : current.filter((t) => t !== tag);
+    await updateDoc(doc(db, IMAGES_COLLECTION, imageId), { tags: next });
+    showToast(add ? `「${tag}」を追加しました。` : `「${tag}」を外しました。`);
   } catch (e) {
-    console.error('[storage] tag update failed', e);
+    console.error('[storage] tag toggle failed', e);
     showToast('タグの更新に失敗しました。');
   }
-});
+}
+
+async function addTagToImages(imageIds, tag) {
+  try {
+    await Promise.all(imageIds.map((id) => {
+      const img = allImages.find((i) => i.id === id);
+      const merged = Array.from(new Set([...(Array.isArray(img?.tags) ? img.tags : []), tag]));
+      return updateDoc(doc(db, IMAGES_COLLECTION, id), { tags: merged });
+    }));
+    showToast(`「${tag}」を${imageIds.length}件に追加しました。`);
+  } catch (e) {
+    console.error('[storage] bulk tag add failed', e);
+    showToast('タグの追加に失敗しました。');
+  }
+}
 
 // ===== 独自の右クリックメニュー =====
 let activeContextMenu = null;

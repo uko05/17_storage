@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>画像保管庫</title>
 
-    <link rel="stylesheet" href="styles.css?v=1.7" />
+    <link rel="stylesheet" href="styles.css?v=1.8" />
 
     <!-- Favicon -->
     <link rel="icon" href="public/scripts/favicon_io/favicon.ico" type="image/x-icon">
@@ -81,23 +81,6 @@
 
         </div>
 
-        <!-- タグ選択ポップアップ(単一画像編集/複数画像への一括追加、両方で共用) -->
-        <div class="storage-tag-picker" id="tag-picker">
-            <div class="storage-tag-picker-inner">
-                <div class="storage-tag-picker-title" id="tag-picker-title">タグを選択</div>
-                <div class="storage-tag-picker-presets" id="tag-picker-presets"></div>
-                <div class="storage-tag-picker-custom" id="tag-picker-custom-chips"></div>
-                <div class="storage-tag-picker-input-row">
-                    <input type="text" id="tag-picker-custom-input" placeholder="独自のタグを追加" maxlength="20">
-                    <button type="button" id="tag-picker-add-custom-btn" class="secondary-btn">追加</button>
-                </div>
-                <div class="storage-tag-picker-actions">
-                    <button type="button" id="tag-picker-cancel-btn" class="secondary-btn">キャンセル</button>
-                    <button type="button" id="tag-picker-apply-btn" class="primary-btn">適用</button>
-                </div>
-            </div>
-        </div>
-
         <!-- 管理者(自分)専用: SafeSearchで保留(flagged)になった画像の確認画面 -->
         <section class="portal-section hidden" id="admin-section">
             <h2>モデレーション確認(管理者専用)</h2>
@@ -118,7 +101,7 @@
         <span id="uko-account-status-slot"></span>
     </footer>
 
-    <span class="site-version" id="site-version">v1.7</span>
+    <span class="site-version" id="site-version">v1.8</span>
 
     <script type="module" src="firebaseConfig.js"></script>
     <script type="module" src="script.js"></script>
