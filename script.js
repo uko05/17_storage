@@ -20,9 +20,6 @@ const homeSubDesc = document.getElementById('home-sub-desc');
 const uploadInput  = document.getElementById('upload-input');
 const uploadBtn    = document.getElementById('upload-btn');
 
-const originalUploadRow = document.getElementById('original-upload-row');
-const originalUploadCheckbox = document.getElementById('original-upload-checkbox');
-
 const tagFilterList     = document.getElementById('tag-filter-list');
 const selectModeToggle = document.getElementById('select-mode-toggle');
 const bulkDeleteBtn    = document.getElementById('bulk-delete-btn');
@@ -52,9 +49,7 @@ const WEBP_QUALITY = 0.85;
 // 1日あたりのアップロード上限。想定同時利用者数(仮に1日30人程度)×この上限で
 // 増える保存容量が費用的に問題ない範囲になるよう仮置きした値
 // (2026-09時点、実際の利用者数を見ながら調整すること)。
-// 元の画像のまま保存(UPoint交換の特典)は容量が大きいので別枠でさらに絞る。
 const DAILY_UPLOAD_LIMIT = 30;
-const DAILY_ORIGINAL_UPLOAD_LIMIT = 5;
 
 let currentUid = null;
 let unsubscribeGallery = null;
@@ -102,7 +97,7 @@ onAuthStateChanged(auth, async (user) => {
     homeSubDesc.classList.add('hidden');
     startGalleryListener(currentUid);
 
-    // 「元の画像のまま保存」はUPointでの交換で解放される機能。sitePerksは
+    // UPointでの交換特典(1日のアップロード上限+1枚)はsitePerksで管理している。
     // Firebase Authのuidではなく共有匿名ID(omikujiUserId)側にぶら下がっているので、
     // accountLinksで一度引いてからomikujiUsersを見に行く(userAvatars等と同じ経路)。
     const omikujiUserId = await resolveOmikujiUserId(currentUid);
@@ -117,9 +112,7 @@ onAuthStateChanged(auth, async (user) => {
   } else {
     currentUid = null;
     allImages = [];
-    originalUploadUnlocked = false;
     extraDailyUploads = 0;
-    originalUploadRow.classList.add('hidden');
     adminSection.classList.add('hidden');
     siteTitle.classList.remove('hidden');
     homeSubDesc.classList.remove('hidden');
@@ -138,15 +131,11 @@ async function resolveOmikujiUserId(uid) {
   }
 }
 
-let originalUploadUnlocked = false;
 let extraDailyUploads = 0;
 function startSitePerksListener(omikujiUserId) {
   return onSnapshot(doc(db, 'omikujiUsers', omikujiUserId), (snap) => {
     const perks = snap.data()?.sitePerks?.storage17 || {};
-    originalUploadUnlocked = !!perks.originalUpload;
     extraDailyUploads = perks.extraDailyUploads || 0;
-    originalUploadRow.classList.toggle('hidden', !originalUploadUnlocked);
-    if (!originalUploadUnlocked) originalUploadCheckbox.checked = false;
   }, (e) => console.error('[storage] site perks listen failed', e));
 }
 
@@ -663,10 +652,9 @@ function startOfTodayMs() {
 // allImages(ギャラリー購読で既に持っている自分の全件)から、ローカル日付の
 // 今日作成された件数を数える。書き込み直後でcreatedAtがserverTimestamp未解決
 // (ローカルではnull)な場合は「今作った=今日」として扱う。
-function countUploadedToday(onlyOriginal) {
+function countUploadedToday() {
   const todayStart = startOfTodayMs();
   return allImages.filter((img) => {
-    if (onlyOriginal && !img.isOriginal) return false;
     const ms = img.createdAt?.toMillis ? img.createdAt.toMillis() : Date.now();
     return ms >= todayStart;
   }).length;
@@ -677,10 +665,7 @@ uploadInput.addEventListener('change', async (e) => {
   uploadInput.value = '';
   if (!files.length || !currentUid) return;
 
-  const wantsOriginal = originalUploadUnlocked && originalUploadCheckbox.checked;
-  let uploadedToday = countUploadedToday(false);
-  let originalUploadedToday = countUploadedToday(true);
-  let fellBackToCompressed = false;
+  let uploadedToday = countUploadedToday();
   let hitDailyLimit = false;
 
   const dailyLimit = myDailyUploadLimit();
@@ -691,17 +676,11 @@ uploadInput.addEventListener('change', async (e) => {
       showToast(`1日のアップロード上限(${dailyLimit}枚)に達したため、残りは保存できませんでした。`);
       break;
     }
-    // 元画像保存の1日上限に達している場合は、アップロード自体は続行しつつ
-    // その分だけ通常の圧縮保存にフォールバックする(せっかく選んだ画像を
-    // 無駄にしないため、エラーにはしない)。
-    const useOriginalForThis = wantsOriginal && originalUploadedToday < DAILY_ORIGINAL_UPLOAD_LIMIT;
-    if (wantsOriginal && !useOriginalForThis) fellBackToCompressed = true;
 
     if (files.length > 1) showToast(`アップロード中... (${i + 1}/${files.length})`);
     try {
-      await uploadOneFile(files[i], currentUid, useOriginalForThis);
+      await uploadOneFile(files[i], currentUid);
       uploadedToday++;
-      if (useOriginalForThis) originalUploadedToday++;
     } catch (err) {
       console.error('[storage] upload failed', err);
       showToast(`「${files[i].name}」のアップロードに失敗しました。`);
@@ -709,21 +688,9 @@ uploadInput.addEventListener('change', async (e) => {
       return;
     }
   }
-  if (!hitDailyLimit) {
-    showToast(fellBackToCompressed
-      ? `アップロードが完了しました(元画像保存は1日${DAILY_ORIGINAL_UPLOAD_LIMIT}枚までのため、一部は圧縮版で保存しました)。`
-      : 'アップロードが完了しました。');
-  }
+  if (!hitDailyLimit) showToast('アップロードが完了しました。');
   uploadBtn.disabled = false;
 });
-
-const ORIGINAL_EXT_BY_TYPE = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  'image/bmp': 'bmp',
-};
 
 // Storageの読み取りルールがどのパスも公開(if true)なので、getDownloadURL()の
 // ような署名付きURLは不要で、標準のダウンロードURL形式をパスから直接組み立てられる。
@@ -731,20 +698,12 @@ function publicDownloadUrl(path) {
   return `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o/${encodeURIComponent(path)}?alt=media`;
 }
 
-async function uploadOneFile(file, uid, useOriginal) {
+async function uploadOneFile(file, uid) {
   const nativeImg = await loadImageFromFile(file);
-
-  // 「元の画像のまま保存」がON(UPointで解放済み)なら、リサイズ/圧縮せず
-  // 選んだファイルをそのままアップロードする。対応していない形式の場合は
-  // 従来通りWebPへ変換する(ORIGINAL_EXT_BY_TYPEに無ければフォールバック)。
-  const ext = ORIGINAL_EXT_BY_TYPE[file.type];
-  const isOriginal = !!(useOriginal && ext);
-  const mainFilename = isOriginal ? `original.${ext}` : 'view.webp';
-  const mainContentType = isOriginal ? file.type : 'image/webp';
 
   const imageId = doc(collection(db, IMAGES_COLLECTION)).id;
   const thumbPath = `${STORAGE_ROOT}/${uid}/${imageId}/thumb.webp`;
-  const mainPath  = `${STORAGE_ROOT}/${uid}/${imageId}/${mainFilename}`;
+  const mainPath  = `${STORAGE_ROOT}/${uid}/${imageId}/view.webp`;
 
   // SafeSearchモデレーション用Cloud Function(Storageの書き込み完了トリガー)は
   // 判定結果をこのFirestoreドキュメントにmergeで書き込みに来る。そのトリガーは
@@ -764,14 +723,13 @@ async function uploadOneFile(file, uid, useOriginal) {
     mainPath,
     thumbPath,
     shareEnabled: false,
-    isOriginal,
   });
 
   const thumbBlob = await resizeToWebp(nativeImg, THUMB_MAX_SIDE, WEBP_QUALITY);
   await uploadBytes(ref(storage, thumbPath), thumbBlob, { contentType: 'image/webp' });
 
-  const mainBlob = isOriginal ? file : await resizeToWebp(nativeImg, VIEW_MAX_SIDE, WEBP_QUALITY);
-  await uploadBytes(ref(storage, mainPath), mainBlob, { contentType: mainContentType });
+  const mainBlob = await resizeToWebp(nativeImg, VIEW_MAX_SIDE, WEBP_QUALITY);
+  await uploadBytes(ref(storage, mainPath), mainBlob, { contentType: 'image/webp' });
 }
 
 function loadImageFromFile(file) {

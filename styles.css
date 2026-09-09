@@ -170,16 +170,6 @@ body.portal-page {
   text-align: center;
   padding: 6px 0 18px;
 }
-.storage-original-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 10px;
-  font-size: 0.85rem;
-  color: #555;
-  cursor: pointer;
-}
 
 /* ===== 絞り込み ===== */
 .storage-filter-row {
