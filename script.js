@@ -259,22 +259,32 @@ function renderGallery() {
 
     // ブラウザ標準の右クリックメニュー(「名前を付けて画像を保存」等)は出さず、
     // このサイト独自のメニュー(削除/ダウンロード/共有用URL/タグ)を表示する。
-    // タグは「タグを選択」のようなワンクッションを挟まず、候補タグをそのまま
-    // 縦に並べて出し、クリックした瞬間にON/OFFする(2026-09-09)。
+    // 「タグを選択」をワンクッション挟み、クリックするとタグ一覧(候補+新規追加)
+    // だけの2段目のメニューが同じ位置に開く(2026-09-09)。
     // 選択モードで1枚以上チェックが付いていれば、右クリックした画像に関わらず
-    // 選択中の全画像へまとめてタグを追加するメニューになる。
+    // 選択中の全画像へまとめてタグを追加/削除するメニューになる。
     thumb.draggable = false;
     card.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       if (selectedImageIds.size > 0) {
-        openContextMenu(e.pageX, e.pageY, buildTagMenuItems([...selectedImageIds]));
+        const ids = [...selectedImageIds];
+        openContextMenu(e.pageX, e.pageY, [
+          { label: `タグを選択(${ids.length}件に追加)`, onClick: () => openContextMenu(e.pageX, e.pageY, buildTagMenuItems(ids)) },
+          {
+            label: '画像削除',
+            danger: true,
+            onClick: () => {
+              if (confirm(`選択中の${ids.length}件を削除します。元に戻せません。よろしいですか？`)) deleteImages(ids);
+            },
+          },
+        ]);
         return;
       }
       openContextMenu(e.pageX, e.pageY, [
         { label: '拡大表示', onClick: () => { if (img.viewUrl) openLightbox(img.viewUrl); } },
+        { label: 'タグを選択', onClick: () => openContextMenu(e.pageX, e.pageY, buildTagMenuItems([img.id])) },
         { label: 'ダウンロード', onClick: () => downloadImage(img) },
         { label: '共有用URLをコピー', onClick: () => copyShareUrl(img) },
-        ...buildTagMenuItems([img.id]),
         {
           label: '削除する',
           danger: true,
@@ -470,16 +480,38 @@ async function copyShareUrl(img) {
   }
 }
 
+async function deleteImageFilesAndDoc(img) {
+  const jobs = [];
+  if (img.thumbPath) jobs.push(deleteObject(ref(storage, img.thumbPath)).catch(() => {}));
+  if (img.mainPath) jobs.push(deleteObject(ref(storage, img.mainPath)).catch(() => {}));
+  await Promise.all(jobs);
+  await deleteDoc(doc(db, IMAGES_COLLECTION, img.id));
+}
+
 async function deleteImage(img) {
   try {
-    const jobs = [];
-    if (img.thumbPath) jobs.push(deleteObject(ref(storage, img.thumbPath)).catch(() => {}));
-    if (img.mainPath) jobs.push(deleteObject(ref(storage, img.mainPath)).catch(() => {}));
-    await Promise.all(jobs);
-    await deleteDoc(doc(db, IMAGES_COLLECTION, img.id));
+    await deleteImageFilesAndDoc(img);
     showToast('画像を削除しました。');
   } catch (e) {
     console.error('[storage] delete failed', e);
+    showToast('削除に失敗しました。');
+  }
+}
+
+async function deleteImages(imageIds) {
+  try {
+    await Promise.all(imageIds.map((id) => {
+      const img = allImages.find((i) => i.id === id);
+      return img ? deleteImageFilesAndDoc(img) : Promise.resolve();
+    }));
+    selectedImageIds.clear();
+    selectModeToggle.checked = false;
+    selectModeEnabled = false;
+    galleryGrid.classList.remove('select-mode');
+    renderGallery();
+    showToast(`${imageIds.length}件の画像を削除しました。`);
+  } catch (e) {
+    console.error('[storage] bulk delete failed', e);
     showToast('削除に失敗しました。');
   }
 }
