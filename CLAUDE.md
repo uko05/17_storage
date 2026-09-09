@@ -95,12 +95,25 @@ asia-northeast1にあるため。Storageトリガーはバケットと別リー�
 - `moderateStorageUpload`(Storageの`onFinalize`トリガー、パスが
   `screenshotStorage/{uid}/{imageId}/(view.webp|original.*)`の時だけ処理。
   `thumb.webp`は同じ画像の縮小版で判定結果が変わらないためスキップ)。
-  Cloud Vision APIのSafeSearch Detectionを実行し、`VERY_LIKELY`→
-  `moderationStatus:'removed'`、`LIKELY`/`POSSIBLE`→`'flagged'`(+
-  `flaggedAt`)、`UNLIKELY`/`VERY_UNLIKELY`→`'approved'`にFirestoreを
-  更新する。SafeSearch自体がエラーで失敗した場合も安全側に倒して
-  `'flagged'`(`flaggedReason:'safesearch_error'`)にする(無条件approvedには
-  しない)。
+  Cloud Vision APIのSafeSearch Detectionを実行し、`adult`/`violence`/`racy`
+  のいずれかが`VERY_LIKELY`なら`moderationStatus:'removed'`。
+  **`racy`はこれ以外の判定には一切関与しない**(2026-09-09、下記参照)。
+  `adult`/`violence`が`POSSIBLE`以上なら`'flagged'`(+`flaggedAt`)、
+  それ以外は`'approved'`にFirestoreを更新する。SafeSearch自体がエラーで
+  失敗した場合も安全側に倒して`'flagged'`(`flaggedReason:'safesearch_error'`)
+  にする(無条件approvedにはしない)。判定結果(`safeSearchScores:{adult,
+  violence,racy}`)はログとFirestoreドキュメントの両方に記録する(元々
+  記録しておらず、保留理由を後から追えなかった反省から追加)。管理画面の
+  flagged一覧にもこのスコアを表示する。
+
+  **`racy`のしきい値変更の経緯**: 当初`POSSIBLE`から保留にしていたが、
+  ソシャゲ系キャラは肩出し・デコルテの衣装がデザインとして標準的なため、
+  完全に健全なイラストが大量に誤検知された。`LIKELY`まで緩和しても
+  なお健全な画像が引っかかる実例が確認されたため、最終的に`racy`は
+  保留判定から完全に除外し、`VERY_LIKELY`の即削除にのみ関与する形にした
+  (2026-09-09)。今後同様の相談が来た場合、`adult`/`violence`はこのサイトの
+  用途(原神/スタレのスクショ・イラスト)では誤検知が少なく、`racy`だけが
+  ノイズ源になりやすいという前提を踏まえること。
 - `sweepFlaggedImages`(`onSchedule('every 24 hours')`)。`flagged`のまま
   `flaggedAt`から7日経過した画像を`'removed'`にする(見忘れ放置の
   フェイルセーフ)。
