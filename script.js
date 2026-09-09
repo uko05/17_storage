@@ -241,14 +241,17 @@ function renderGallery() {
     card.appendChild(favBtn);
 
     // 複数選択モード用チェックボックス(select-modeの時だけCSSで表示)。
+    // チェック自体は分かりにくいので、選択中は赤枠(.selected)を主な目印にする。
     const selectCb = document.createElement('input');
     selectCb.type = 'checkbox';
     selectCb.className = 'storage-card-select';
     selectCb.checked = selectedImageIds.has(img.id);
+    card.classList.toggle('selected', selectCb.checked);
     selectCb.addEventListener('click', (e) => e.stopPropagation());
     selectCb.addEventListener('change', () => {
       if (selectCb.checked) selectedImageIds.add(img.id);
       else selectedImageIds.delete(img.id);
+      card.classList.toggle('selected', selectCb.checked);
     });
     card.appendChild(selectCb);
 

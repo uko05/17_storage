@@ -243,9 +243,15 @@ body.portal-page {
   position: relative;
   aspect-ratio: 1 / 1;
   border-radius: 10px;
+  border: 3px solid transparent;
   overflow: hidden;
   background: #ddd;
   cursor: pointer;
+}
+/* 複数選択モードでチェック中の画像は、分かりにくい青チェックの代わりに
+   赤枠で選択中だと分かるようにする(2026-09-09)。 */
+.storage-card.selected {
+  border-color: #e53935;
 }
 .storage-card img {
   width: 100%;
@@ -269,6 +275,7 @@ body.portal-page {
   width: 20px;
   height: 20px;
   z-index: 1;
+  accent-color: #e53935;
 }
 .storage-gallery-grid.select-mode .storage-card-select { display: block; }
 .storage-card-pending {
