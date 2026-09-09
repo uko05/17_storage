@@ -310,6 +310,41 @@ body.portal-page {
   padding: 6px 10px;
 }
 
+/* ===== 独自の確認ポップアップ ===== */
+.storage-confirm {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 3200;
+  background: rgba(0,0,0,0.5);
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.storage-confirm.open { display: flex; }
+.storage-confirm-inner {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  width: 100%;
+  max-width: 320px;
+}
+.storage-confirm-message {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin-bottom: 18px;
+  white-space: pre-wrap;
+}
+.storage-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.storage-confirm-actions button {
+  width: auto;
+  padding: 8px 18px;
+}
+
 /* ===== 独自の右クリックメニュー ===== */
 .storage-context-menu {
   position: absolute;

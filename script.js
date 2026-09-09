@@ -77,13 +77,13 @@ selectModeToggle.addEventListener('change', () => {
 
 // 選択チェックは常時表示なので、このボタンは「複数選択」がONかどうかに
 // 関わらず、その時点で選択中の画像があれば削除できる。
-bulkDeleteBtn.addEventListener('click', () => {
+bulkDeleteBtn.addEventListener('click', async () => {
   if (selectedImageIds.size === 0) {
     showToast('削除する画像を選んでください。');
     return;
   }
   const ids = [...selectedImageIds];
-  if (confirm(`選択中の${ids.length}件を削除します。元に戻せません。よろしいですか？`)) deleteImages(ids);
+  if (await showConfirm(`選択中の${ids.length}件を削除します。元に戻せません。よろしいですか？`)) deleteImages(ids);
 });
 
 // ===== ログイン状態でメイン画面の出し分け =====
@@ -272,8 +272,8 @@ function renderGallery() {
           {
             label: '画像削除',
             danger: true,
-            onClick: () => {
-              if (confirm(`選択中の${ids.length}件を削除します。元に戻せません。よろしいですか？`)) deleteImages(ids);
+            onClick: async () => {
+              if (await showConfirm(`選択中の${ids.length}件を削除します。元に戻せません。よろしいですか？`)) deleteImages(ids);
             },
           },
         ]);
@@ -287,8 +287,8 @@ function renderGallery() {
         {
           label: '削除する',
           danger: true,
-          onClick: () => {
-            if (confirm('この画像を削除します。元に戻せません。よろしいですか？')) deleteImage(img);
+          onClick: async () => {
+            if (await showConfirm('この画像を削除します。元に戻せません。よろしいですか？')) deleteImage(img);
           },
         },
       ]);
@@ -421,6 +421,52 @@ function closeLightbox() {
   if (lb) lb.classList.remove('open');
 }
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
+
+// ===== 独自の確認ポップアップ(削除確認など。ブラウザ標準confirm()は使わない) =====
+function showConfirm(message) {
+  return new Promise((resolve) => {
+    let modal = document.getElementById('storage-confirm');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'storage-confirm';
+      modal.className = 'storage-confirm';
+      modal.innerHTML = `
+        <div class="storage-confirm-inner">
+          <p class="storage-confirm-message"></p>
+          <div class="storage-confirm-actions">
+            <button type="button" class="secondary-btn storage-confirm-cancel">キャンセル</button>
+            <button type="button" class="primary-btn storage-confirm-ok">OK</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+    modal.querySelector('.storage-confirm-message').textContent = message;
+
+    const okBtn = modal.querySelector('.storage-confirm-ok');
+    const cancelBtn = modal.querySelector('.storage-confirm-cancel');
+
+    const finish = (result) => {
+      modal.classList.remove('open');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onBackdrop);
+      window.removeEventListener('keydown', onKeydown);
+      resolve(result);
+    };
+    const onOk = () => finish(true);
+    const onCancel = () => finish(false);
+    const onBackdrop = (e) => { if (e.target === modal) finish(false); };
+    const onKeydown = (e) => { if (e.key === 'Escape') finish(false); };
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    modal.addEventListener('click', onBackdrop);
+    window.addEventListener('keydown', onKeydown);
+
+    modal.classList.add('open');
+  });
+}
 
 // ===== 簡易トースト通知 =====
 let toastTimer = null;
@@ -569,8 +615,8 @@ function renderAdminFlagged(items) {
     rejectBtn.type = 'button';
     rejectBtn.className = 'secondary-btn';
     rejectBtn.textContent = '削除する';
-    rejectBtn.addEventListener('click', () => {
-      if (confirm('この画像を削除します。よろしいですか？')) moderateFlaggedImage(img.id, 'removed');
+    rejectBtn.addEventListener('click', async () => {
+      if (await showConfirm('この画像を削除します。よろしいですか？')) moderateFlaggedImage(img.id, 'removed');
     });
 
     actions.appendChild(openBtn);

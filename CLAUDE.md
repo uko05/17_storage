@@ -143,6 +143,15 @@ Firestoreルール側でも管理者(`isAdmin()`)には`moderationStatus`/`share
 なる(一度交換すれば永続、`perkType:'flag'`)。08_UPoint側のカタログ追加も完了
 (`08_UPoint/script.js`のSITE_GROUPS)。
 
+## 独自の確認ポップアップ(実装済み 2026-09-10)
+削除確認にブラウザ標準の`confirm()`を使うのをやめ、`showConfirm(message)`
+(Promiseを返す、ライトボックス/トースト等と同じ動的生成パターン)に統一した。
+`#storage-confirm`は背景クリック/Escでキャンセル扱いになる。呼び出し側は
+`if (await showConfirm('...')) { ... }`の形で使う(onClickをasyncにする必要
+がある点に注意)。4箇所(単体削除2つ、複数選択削除、管理者用flagged却下)を
+置き換え済み。`prompt()`(タグの自由入力)はまだブラウザ標準のまま
+(今回はconfirm()だけが対象だったため)。
+
 ## タグ機能(実装済み 2026-09-09)
 それまでタグを付けるUI自体が存在せず、絞り込み欄が常に空振りする状態だった
 ため新規実装。既定タグ`PRESET_TAGS`(`script.js`先頭で定義):
