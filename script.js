@@ -23,7 +23,7 @@ const uploadBtn    = document.getElementById('upload-btn');
 const originalUploadRow = document.getElementById('original-upload-row');
 const originalUploadCheckbox = document.getElementById('original-upload-checkbox');
 
-const tagFilterInput   = document.getElementById('tag-filter-input');
+const tagFilterList     = document.getElementById('tag-filter-list');
 const favoriteFilterBtn = document.getElementById('favorite-filter-btn');
 const selectModeToggle = document.getElementById('select-mode-toggle');
 
@@ -70,7 +70,7 @@ let unsubscribeGallery = null;
 let unsubscribeSitePerks = null;
 let allImages = [];       // 自分がownerの画像を全件(Firestoreの現在の値)
 let favoriteOnly = false;
-let tagFilterText = '';
+let activeTagFilter = null; // 登録されているタグの中から選ぶ方式(自由入力ではない)
 let unsubscribeAdminFlagged = null;
 
 // ===== 複数選択モード(タグ一括付け用) =====
@@ -163,6 +163,7 @@ function startGalleryListener(uid) {
   );
   unsubscribeGallery = onSnapshot(q, (snap) => {
     allImages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderTagFilterList();
     renderGallery();
   }, (e) => {
     console.error('[storage] gallery listen failed', e);
@@ -170,13 +171,42 @@ function startGalleryListener(uid) {
   });
 }
 
+// ===== タグ絞り込み(登録されている=実際に使われているタグの一覧から選ぶ方式。
+// 自由入力ではない) =====
+function renderTagFilterList() {
+  const counts = new Map();
+  allImages.forEach((img) => {
+    if (img.moderationStatus === 'removed') return;
+    (Array.isArray(img.tags) ? img.tags : []).forEach((t) => counts.set(t, (counts.get(t) || 0) + 1));
+  });
+  // 使われている回数が多い順、同数ならあいうえお順
+  const tags = [...counts.keys()].sort((a, b) => (counts.get(b) - counts.get(a)) || a.localeCompare(b, 'ja'));
+
+  if (activeTagFilter && !tags.includes(activeTagFilter)) activeTagFilter = null;
+
+  tagFilterList.innerHTML = '';
+  tagFilterList.classList.toggle('hidden', tags.length === 0);
+  tags.forEach((tag) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'storage-tag-filter-chip' + (activeTagFilter === tag ? ' active' : '');
+    btn.textContent = `${tag} (${counts.get(tag)})`;
+    btn.addEventListener('click', () => {
+      activeTagFilter = activeTagFilter === tag ? null : tag;
+      renderTagFilterList();
+      renderGallery();
+    });
+    tagFilterList.appendChild(btn);
+  });
+}
+
 function renderGallery() {
   const filtered = allImages.filter((img) => {
     if (img.moderationStatus === 'removed') return false;
     if (favoriteOnly && !img.favorite) return false;
-    if (tagFilterText) {
+    if (activeTagFilter) {
       const tags = Array.isArray(img.tags) ? img.tags : [];
-      if (!tags.some((t) => t.toLowerCase().includes(tagFilterText))) return false;
+      if (!tags.includes(activeTagFilter)) return false;
     }
     return true;
   });
@@ -223,6 +253,13 @@ function renderGallery() {
     card.appendChild(selectCb);
 
     card.addEventListener('click', () => {
+      // 複数選択モードの時は、画像のどこをクリックしてもチェックが
+      // トグルするようにする(チェックボックスそのものを狙わなくていい)。
+      if (selectModeEnabled) {
+        selectCb.checked = !selectCb.checked;
+        selectCb.dispatchEvent(new Event('change'));
+        return;
+      }
       if (img.viewUrl) openLightbox(img.viewUrl);
     });
 
@@ -593,11 +630,6 @@ function escapeHtml(str) {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
 }
-
-tagFilterInput.addEventListener('input', () => {
-  tagFilterText = tagFilterInput.value.trim().toLowerCase();
-  renderGallery();
-});
 
 favoriteFilterBtn.addEventListener('click', () => {
   favoriteOnly = !favoriteOnly;

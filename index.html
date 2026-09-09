@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>画像保管庫</title>
 
-    <link rel="stylesheet" href="styles.css?v=1.5" />
+    <link rel="stylesheet" href="styles.css?v=1.6" />
 
     <!-- Favicon -->
     <link rel="icon" href="public/scripts/favicon_io/favicon.ico" type="image/x-icon">
@@ -64,12 +64,12 @@
                 <div class="storage-filter-row">
                     <label class="storage-select-mode-toggle" title="複数選択モード">
                         <input type="checkbox" id="select-mode-toggle">
-                        <span>選択</span>
+                        <span>複数選択</span>
                     </label>
-                    <input type="text" id="tag-filter-input" class="storage-tag-input" data-i18n-placeholder="tagFilterPlaceholder" placeholder="タグで絞り込み">
                     <button type="button" id="favorite-filter-btn" class="secondary-btn" data-i18n="favoriteFilterBtn">★お気に入りのみ</button>
                 </div>
-                <p class="hint" id="select-mode-hint">「選択」をONにすると画像に選択チェックが出ます。1枚以上選んで右クリックするとまとめてタグを付けられます(何も選んでいなければ、右クリックした1枚だけに付きます)。</p>
+                <p class="hint" id="select-mode-hint">「複数選択」をONにすると画像をクリックするだけで選択できます。1枚以上選んで右クリックするとまとめてタグを付けられます(何も選んでいなければ、右クリックした1枚だけに付きます)。</p>
+                <div class="storage-tag-filter-list hidden" id="tag-filter-list"></div>
             </section>
 
             <section class="portal-section storage-gallery-section">
@@ -118,7 +118,7 @@
         <span id="uko-account-status-slot"></span>
     </footer>
 
-    <span class="site-version" id="site-version">v1.5</span>
+    <span class="site-version" id="site-version">v1.6</span>
 
     <script type="module" src="firebaseConfig.js"></script>
     <script type="module" src="script.js"></script>

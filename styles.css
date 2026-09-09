@@ -192,24 +192,44 @@ body.portal-page {
 .storage-select-mode-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 0.8rem;
-  color: #555;
+  gap: 6px;
+  font-size: 1rem;
+  color: #333;
   cursor: pointer;
   white-space: nowrap;
 }
-.storage-tag-input {
-  flex: 1;
-  min-width: 110px;
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 16px;
-  font-family: inherit;
+.storage-select-mode-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
 }
 #select-mode-hint {
   text-align: center;
   margin-top: 8px;
+}
+
+.storage-tag-filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 12px;
+}
+.storage-tag-filter-chip {
+  width: auto;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  border: 1px solid #ddd;
+  border-radius: 16px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  font-family: inherit;
+}
+.storage-tag-filter-chip:hover { background: #f0f0f0; }
+.storage-tag-filter-chip.active {
+  background: #ffcc00;
+  border-color: #ffcc00;
+  font-weight: bold;
 }
 
 /* ===== ギャラリー ===== */
