@@ -8,7 +8,7 @@
 import { auth, db, storage, storageBucket } from './firebaseConfig.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
-  collection, doc, getDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp,
+  collection, doc, getDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp, runTransaction,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { ref, uploadBytes, deleteObject } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
 
@@ -660,6 +660,42 @@ function countUploadedToday() {
   }).length;
 }
 
+// ===== ユーザーID(uko05.github.io配下の全サイト共通のlocalStorageキー) =====
+// screenshotStorageImages自体はownerUid(Firebase Authのuid)で管理しているが、
+// うーこポイント交換所のミッション達成フラグはomikujiUsers/{共有匿名ID}側で
+// 管理しているため、こちらも別途必要になる。
+const LS_USER_ID = 'genshinOmikuji_userId';
+function getSharedUserId() {
+  let id = localStorage.getItem(LS_USER_ID);
+  if (!id) {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    id = 'u_' + Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+    localStorage.setItem(LS_USER_ID, id);
+  }
+  return id;
+}
+
+// ===== うーこポイント交換所(08_UPoint)ミッション「画像保管庫に画像を保管しよう」 =====
+// 他サイトの画像生成ミッションと同じ二段階方式(達成フラグを立てるだけで、UP付与は
+// 08_UPoint側の「受け取る」操作で行う)。戻り値は「今回はじめて達成したか」。
+async function markMissionAchievedOnce(claimKey) {
+  const userId = getSharedUserId();
+  const ref = doc(db, 'omikujiUsers', userId);
+  try {
+    return await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      const data = snap.exists() ? snap.data() : {};
+      if (data.missionsAchieved?.[claimKey] || data.missionsClaimed?.[claimKey]) return false;
+      tx.set(ref, { missionsAchieved: { [claimKey]: true } }, { merge: true });
+      return true;
+    });
+  } catch (e) {
+    console.error('[storage] mission mark failed', e);
+    return false;
+  }
+}
+
 uploadInput.addEventListener('change', async (e) => {
   const files = [...e.target.files];
   uploadInput.value = '';
@@ -667,6 +703,7 @@ uploadInput.addEventListener('change', async (e) => {
 
   let uploadedToday = countUploadedToday();
   let hitDailyLimit = false;
+  let missionNewlyAchieved = false;
 
   const dailyLimit = myDailyUploadLimit();
   uploadBtn.disabled = true;
@@ -681,6 +718,7 @@ uploadInput.addEventListener('change', async (e) => {
     try {
       await uploadOneFile(files[i], currentUid);
       uploadedToday++;
+      if (await markMissionAchievedOnce('storage17Upload')) missionNewlyAchieved = true;
     } catch (err) {
       console.error('[storage] upload failed', err);
       showToast(`「${files[i].name}」のアップロードに失敗しました。`);
@@ -688,7 +726,11 @@ uploadInput.addEventListener('change', async (e) => {
       return;
     }
   }
-  if (!hitDailyLimit) showToast('アップロードが完了しました。');
+  if (!hitDailyLimit) {
+    showToast(missionNewlyAchieved
+      ? 'アップロードが完了しました。ミッション達成！うーこポイント交換所で受け取ろう'
+      : 'アップロードが完了しました。');
+  }
   uploadBtn.disabled = false;
 });
 
