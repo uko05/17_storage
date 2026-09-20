@@ -292,4 +292,87 @@
     btn.addEventListener('click', () => btn.closest('.uko-menu-group').classList.toggle('open'));
   });
 
+  /* ===================================================================
+     個人ごとのリンク挙動設定(2026-09-21追加)
+     omikujiUsers/{共有匿名ID}.linkOpenMode ('newTab'(既定)|'sameTab') を見て、
+     うこ氏サイト群(https://uko05.github.io/配下)へのリンクだけ、別タブか同じ
+     タブかを切り替える。Twitter/Discordなど本当に外部のリンクはhrefが
+     uko05.github.io始まりでないため対象外(触らない)。設定自体は
+     24_AccountCenterのトップページ(ログイン不要、匿名IDだけで使える)で本人が
+     変更する。
+     このファイルはサイト横断でそのまま<script src>される非モジュールスクリプト
+     なのでFirebase SDKを読み込まず、素のfetch()でFirestore REST APIを直接叩く
+     (omikujiUsersはallow read: if trueで公開されているコレクション)。
+     サイドバー自身のメニューリンクだけでなく、ページ内の他の場所にある
+     uko05.github.ioへのリンク(前回保存した画像の登録リンクなど)も対象にする
+     ため、documentの全体をスキャンし、後から追加されるリンクは
+     MutationObserverで拾う。
+     ★このコピーは00_TopPage/shared/sidebar.jsのベンダー版(同じ内容を維持する
+     こと)。将来ここを直す時は00_TopPage/18_gazou/17_storageの3箇所とも直す。
+  =================================================================== */
+  var FIRESTORE_PROJECT_ID = 'genshin-bakatare01';
+  var LS_USER_ID_KEY = 'genshinOmikuji_userId';
+  var LS_LINK_MODE_KEY = 'ukoLinkOpenMode';
+  var SAME_ORIGIN_PREFIX = 'https://uko05.github.io/';
+
+  function getCachedLinkMode() {
+    try { return localStorage.getItem(LS_LINK_MODE_KEY) || 'newTab'; } catch (e) { return 'newTab'; }
+  }
+
+  function applyLinkModeToRoot(root, mode) {
+    if (!root) return;
+    var sameTab = mode === 'sameTab';
+    var els = [];
+    if (root.nodeType === 1 && root.matches && root.matches('a[href^="' + SAME_ORIGIN_PREFIX + '"]')) els.push(root);
+    if (root.querySelectorAll) {
+      var found = root.querySelectorAll('a[href^="' + SAME_ORIGIN_PREFIX + '"]');
+      for (var i = 0; i < found.length; i++) els.push(found[i]);
+    }
+    els.forEach(function (a) {
+      if (sameTab) {
+        a.removeAttribute('target');
+      } else {
+        a.target = '_blank';
+        if (!a.rel) a.rel = 'noopener';
+      }
+    });
+  }
+
+  function initLinkModePreference() {
+    applyLinkModeToRoot(document.body, getCachedLinkMode());
+
+    var observer = new MutationObserver(function (mutations) {
+      var mode = getCachedLinkMode();
+      mutations.forEach(function (m) {
+        m.addedNodes.forEach(function (node) {
+          if (node.nodeType === 1) applyLinkModeToRoot(node, mode);
+        });
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // 他のスクリプト(例: 設定画面自身)が変更直後に再適用できるよう、最小限の
+    // フックをグローバルに公開しておく。
+    window.UkoLinkMode = {
+      apply: function (mode) { applyLinkModeToRoot(document.body, mode); },
+    };
+
+    try {
+      var userId = localStorage.getItem(LS_USER_ID_KEY);
+      if (!userId) return;
+      fetch('https://firestore.googleapis.com/v1/projects/' + FIRESTORE_PROJECT_ID + '/databases/(default)/documents/omikujiUsers/' + userId)
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (docData) {
+          var mode = (docData && docData.fields && docData.fields.linkOpenMode && docData.fields.linkOpenMode.stringValue === 'sameTab') ? 'sameTab' : 'newTab';
+          if (mode !== getCachedLinkMode()) {
+            try { localStorage.setItem(LS_LINK_MODE_KEY, mode); } catch (e) {}
+            applyLinkModeToRoot(document.body, mode);
+          }
+        })
+        .catch(function () {});
+    } catch (e) {}
+  }
+
+  initLinkModePreference();
+
 })();
